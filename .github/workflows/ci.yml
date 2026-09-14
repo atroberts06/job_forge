@@ -1,0 +1,264 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches-ignore: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Fetch main for diff baseline
+        run: git fetch origin main --depth=1
+
+      - name: Validate guardrail JSON
+        run: python scripts/ci/validate_guardrails_json.py
+
+      - name: Validate resume-tailor artifacts and chronology
+        run: python scripts/ci/validate_resume_tailor_artifacts.py --base origin/main
+
+      - name: Detect job-search changes
+        id: job_search
+        run: |
+          set -euo pipefail
+          CHANGED=$(git diff --name-only origin/main...HEAD || true)
+          MATCH=$(echo "${CHANGED}" | grep -E \
+            -e '^\.github/scripts/job-search/' \
+            -e '^\.github/workflows/job-search-pull\.yml$' \
+            -e '^\.ai/guardrails/locked-job-search-' \
+            -e '^\.ai/guardrails/locked-job-data-model\.json$' \
+            -e '^\.ai/guardrails/locked-projects\.json$' \
+            -e '^\.ai/guardrails/locked-agent-policies\.json$' \
+            -e '^\.github/scripts/resume-tailor/' \
+            -e '^\.cursor/skills/job-analysis/' \
+            -e '^\.cursor/skills/job-orchestrator/' \
+            -e '^scripts/ci/' \
+            -e '^\.ai/history/job-search/companies\.json$' \
+            -e '^\.ai/history/job-search/.+/jobs\.json$' \
+            -e '^\.ai/history/job-search/.+/approved-jobs\.json$' \
+            -e '^\.ai/history/job-search/.+/analyses/.+-analysis\.json$' \
+            || true)
+          if [ -n "${MATCH}" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Job-search paths changed:"
+            echo "${MATCH}"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No job-search path changes."
+          fi
+
+      - name: Detect resume-docx changes
+        id: resume_docx
+        run: |
+          set -euo pipefail
+          CHANGED=$(git diff --name-only origin/main...HEAD || true)
+          MATCH=$(echo "${CHANGED}" | grep -E \
+            -e '^scripts/resume-docx/' \
+            -e '^\.ai/guardrails/locked-resume-template\.docx$' \
+            -e '^\.ai/guardrails/locked-projects\.json$' \
+            -e '^\.ai/guardrails/locked-resume-master-template\.md$' \
+            -e '^\.cursor/skills/resume-tailor/' \
+            -e '^\.cursor/rules/formatting-rules\.mdc$' \
+            -e '^scripts/ci/' \
+            || true)
+          if [ -n "${MATCH}" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Resume-docx paths changed:"
+            echo "${MATCH}"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No resume-docx path changes."
+          fi
+
+      - name: Detect cover-letter-docx changes
+        id: cover_letter_docx
+        run: |
+          set -euo pipefail
+          CHANGED=$(git diff --name-only origin/main...HEAD || true)
+          MATCH=$(echo "${CHANGED}" | grep -E \
+            -e '^scripts/cover-letter-docx/' \
+            -e '^\.ai/guardrails/locked-cover-letter-template\.docx$' \
+            -e '^\.ai/guardrails/locked-cover-letter-template\.md$' \
+            || true)
+          if [ -n "${MATCH}" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Cover-letter-docx paths changed:"
+            echo "${MATCH}"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No cover-letter-docx path changes."
+          fi
+
+      - name: Install job-search test dependencies
+        if: steps.job_search.outputs.changed == 'true'
+        run: pip install -r .github/scripts/job-search/common/requirements.txt
+
+      - name: Run job-search unit tests
+        if: steps.job_search.outputs.changed == 'true'
+        run: python -m pytest .github/scripts/job-search -q
+
+      - name: Run resume-tailor queue unit tests
+        if: steps.job_search.outputs.changed == 'true'
+        run: python -m pytest .github/scripts/resume-tailor/tests -q
+
+      - name: Install resume-docx test dependencies
+        if: steps.resume_docx.outputs.changed == 'true'
+        run: pip install -r scripts/resume-docx/requirements.txt
+
+      - name: Run resume-docx unit tests
+        if: steps.resume_docx.outputs.changed == 'true'
+        run: python -m pytest scripts/resume-docx/tests -q
+
+      - name: Install cover-letter-docx test dependencies
+        if: steps.cover_letter_docx.outputs.changed == 'true'
+        run: pip install -r scripts/cover-letter-docx/requirements.txt
+
+      - name: Run cover-letter-docx unit tests
+        if: steps.cover_letter_docx.outputs.changed == 'true'
+        run: python -m pytest scripts/cover-letter-docx/tests -q
+
+      - name: Run CI helper unit tests
+        if: steps.job_search.outputs.changed == 'true' || steps.resume_docx.outputs.changed == 'true' || steps.cover_letter_docx.outputs.changed == 'true'
+        run: python -m pytest scripts/ci/tests -q
+
+      - name: Validate changed jobs.json files
+        if: steps.job_search.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          FILES=$(git diff --name-only origin/main...HEAD | grep -E '^\.ai/history/job-search/.+/jobs\.json$' || true)
+          if [ -z "${FILES}" ]; then
+            echo "No jobs.json changes to validate."
+          else
+            while IFS= read -r file; do
+              [ -z "${file}" ] && continue
+              [ -f "${file}" ] || continue
+              python .github/scripts/job-search/common/validate_jobs.py "${file}"
+            done <<< "${FILES}"
+          fi
+
+      - name: Validate changed analysis files
+        if: steps.job_search.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          FILES=$(git diff --name-only origin/main...HEAD | grep -E '^\.ai/history/job-search/.+/analyses/.+-analysis\.json$' || true)
+          if [ -z "${FILES}" ]; then
+            echo "No analysis sidecar changes to validate."
+            exit 0
+          fi
+          while IFS= read -r file; do
+            [ -z "${file}" ] && continue
+            [ -f "${file}" ] || continue
+            python .github/scripts/job-search/common/validate_job_search.py "${file}"
+          done <<< "${FILES}"
+
+      - name: Validate changed approved-jobs.json files
+        if: steps.job_search.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          FILES=$(git diff --name-only origin/main...HEAD | grep -E '^\.ai/history/job-search/.+/approved-jobs\.json$' || true)
+          if [ -z "${FILES}" ]; then
+            echo "No approved-jobs.json changes to validate."
+            exit 0
+          fi
+          while IFS= read -r file; do
+            [ -z "${file}" ] && continue
+            [ -f "${file}" ] || continue
+            python .github/scripts/job-search/common/validate_job_search.py "${file}"
+          done <<< "${FILES}"
+
+      - name: Validate companies.json
+        if: steps.job_search.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          FILES=$(git diff --name-only origin/main...HEAD | grep -E '^\.ai/history/job-search/companies\.json$' || true)
+          if [ -z "${FILES}" ]; then
+            echo "No companies.json changes to validate."
+            exit 0
+          fi
+          python .github/scripts/job-search/common/validate_job_search.py ".ai/history/job-search/companies.json"
+
+      - name: Warn on non-feature branch resume-tailor changes
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        run: |
+          BRANCH="${{ github.head_ref || github.ref_name }}"
+          RESUME_TAILOR_CHANGES=$(git diff --name-only origin/main...HEAD | grep '^\.ai/history/resume-tailor/' || true)
+          if [ -n "$RESUME_TAILOR_CHANGES" ] && [[ ! "$BRANCH" =~ ^feature/ ]]; then
+            echo "::warning::Resume-tailor changes detected on branch '$BRANCH' which does not match feature/* convention (ADR-006)."
+          fi
+
+  pr-governance:
+    name: pr-governance
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Request review from repository owner
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const reviewer = context.repo.owner;
+            const { owner, repo, number } = context.issue;
+            try {
+              await github.rest.pulls.requestReviewers({
+                owner,
+                repo,
+                pull_number: number,
+                reviewers: [reviewer],
+              });
+              console.log(`Review requested from ${reviewer}`);
+            } catch (error) {
+              if (error.status === 422) {
+                console.log(`Reviewer request skipped: ${error.message}`);
+              } else {
+                throw error;
+              }
+            }
+
+      - name: Ensure ready-for-review label exists
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const labelName = 'ready-for-review';
+            try {
+              await github.rest.issues.getLabel({ owner, repo, name: labelName });
+            } catch (error) {
+              if (error.status === 404) {
+                await github.rest.issues.createLabel({
+                  owner,
+                  repo,
+                  name: labelName,
+                  color: '0E8A16',
+                  description: 'Resume-tailor PR ready for human review (ADR-006)',
+                });
+              } else {
+                throw error;
+              }
+            }
+
+      - name: Apply ready-for-review label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['ready-for-review'],
+            });

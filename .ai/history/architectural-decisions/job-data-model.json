@@ -1,0 +1,459 @@
+{
+  "id": "job_model_001",
+  "version": "1.8.0",
+  "created_on": "2026-08-06T00:00:00Z",
+  "modified_on": "2026-09-11T00:00:00Z",
+  "description": "Human-readable documentation of the job-search instance model: dated pull files, per-job analysis sidecars, the approved-job queue, and the companies catalog. Source of truth is .ai/guardrails/locked-job-search-data-model.json.",
+  "source_of_truth": ".ai/guardrails/locked-job-search-data-model.json",
+  "identity_rules": {
+    "id_format": "{platform}:{board_token}:{source_job_id}",
+    "sidecar_filename": "Replace : with -; suffix -analysis.json. Example greenhouse:lts:4285142009 → greenhouse-lts-4285142009-analysis.json. JSON stores unsanitized job_id.",
+    "notes": "board_token is the platform site slug (e.g. Greenhouse board token). source_job_id is [0-9]+. platform has no hyphen."
+  },
+  "status_enum": {
+    "new": "Presence on jobs.json: first seen on this pull date. Pull writes this. Analysis and orchestrator never write jobs.json.status.",
+    "active": "Presence on jobs.json: still listed; id seen on the nearest prior pull. Pull writes this. Lookback does not copy qualification or queue terminals onto a new day's file (G5).",
+    "closed": "Greenhouse/TalentBrew: presence on a prior dated jobs.json when the id is absent from today's live board snapshot; CI stamps this (ADR-022 close-wins). SerpAPI: human last-seen JSON edit only (ADR-046); pull absence is not closed. Today's file stays live listings only. Closed jobs do not appear on the dashboard live join. Execution widgets may still list ledger rows for rolled-off or closed ids and resolve Title from historical dated src or slug fallback (ADR-047, ADR-048)."
+  },
+  "work_location_type_enum": {
+    "remote": "Fully remote arrangement.",
+    "hybrid": "Hybrid arrangement.",
+    "onsite": "On-site arrangement.",
+    "unknown": "No arrangement token found in allowlisted metadata or location/office names."
+  },
+  "analysis_decision_enum": {
+    "approved": "Locked evidence shows competitive fit and no hard disqualifier. Orchestrator upserts approved-jobs.json.",
+    "rejected": "Hard disqualifier or unmet mandatory requirement. No queue row."
+  },
+  "requirement_importance_enum": {
+    "mandatory": "Lexical must/required/minimum or an explicit numeric minimum (e.g. 10+ years).",
+    "preferred": "Unlabeled or non-must qualification. Gaps are documented and non-fatal."
+  },
+  "requirement_result_enum": {
+    "met": "Locked evidence satisfies the requirement.",
+    "partial": "Partially met; a must-have may pass only with explicit compensating locked evidence.",
+    "not_evidenced": "No matching locked field, empty/null field, or expired dated credential treated as not currently held.",
+    "contradicted": "Locked evidence conflicts with the requirement. Mandatory contradicted forces rejection."
+  },
+  "queue_status_enum": {
+    "approved": "Orchestrator upserted after validated sidecar approved. Waiting for resume-tailor claim.",
+    "in_progress": "Orchestrator claimed the row before launching resume-tailor.",
+    "failed": "Structured failure; explicit retry back to in_progress. No automatic retry.",
+    "completed": "Resume-tailor created its PR and returned. Does not mean the PR merged. Kept permanently in the jobs array.",
+    "deployed": "Resume PR merged and Google Drive upload succeeded. CD stamps this after sync_gdrive.py. artifacts_url is the Drive {company}/{role} folder."
+  },
+  "decision_impact_enum": {
+    "none": "External research is contextual only. Validators forbid using it as qualification evidence."
+  },
+  "computed_overall_pipeline_status": {
+    "notes": "Not stored on jobs.json. Dashboard G9 computes this join from the latest dated src file only.",
+    "order": [
+      "queue deployed|completed → completed",
+      "else queue in_progress|failed|approved → approved",
+      "else sidecar is_current decision approved → approved, rejected → rejected",
+      "else jobs.json new|active"
+    ]
+  },
+  "dashboard_widgets": {
+    "notes": "P2-D1 read-only POC. Live G9 table lists new|active rows from {platform}/src/{latest-date}/jobs.json only. PR ready / in progress / failed widgets are ledger-scoped and must show a non-empty Title even when the id is absent from that latest file (ADR-047, ADR-048).",
+    "title_resolution_order": [
+      "live join row title (latest src, new|active only)",
+      "any remaining dated {platform}/src/*/jobs.json title for that id (latest non-empty wins)",
+      "position segment of sandbox_path, else feature_branch after feature/, kebab-to-display (not listing identity)",
+      "(title unavailable)"
+    ]
+  },
+  "arrangement_gate": {
+    "remote": "Bypasses geography entirely; include_remote toggle applies.",
+    "hybrid": "include_hybrid toggle, then locations.include geography match.",
+    "onsite": "include_onsite toggle, then locations.include geography match.",
+    "unknown": "Always passes the arrangement gate. include_* toggles apply only to known values (remote/hybrid/onsite). Filtered on geography only.",
+    "notes": "locations.include is purely geographic (no Remote/Hybrid/On-Site tokens)."
+  },
+  "pull_file": {
+    "path_pattern": ".ai/history/job-search/<platform>/src/<YYYY-MM-DD>/jobs.json",
+    "fields": {
+      "platform": "ATS/aggregator key (e.g. greenhouse).",
+      "pulled_at": "UTC ISO datetime with Z suffix when the pull finished.",
+      "jobs": "Array of normalized job objects. Today's file is live listings only (new|active)."
+    }
+  },
+  "job": {
+    "required_fields": [
+      "id",
+      "source_job_id",
+      "status",
+      "title",
+      "company",
+      "location",
+      "work_location_type",
+      "url",
+      "pulled_at",
+      "posted_at",
+      "status_updated_at"
+    ],
+    "optional_fields": [
+      "description_text",
+      "raw",
+      "workday_requisition_id"
+    ],
+    "field_notes": {
+      "id": "Globally unique listing id {platform}:{board_token}:{source_job_id}. SerpApi: platform=serpapi, board_token=kebab_case(via) or unknown, source_job_id=decimal sha256(opaque job_id)[:8]. TalentBrew: platform=talentbrew, board_token=catalog company id (capital-one), source_job_id=listing seq from list a[data-job-id] (digits only, never the Workday R… requisition).",
+      "status": "Presence only on this file: pull writes new|active. Greenhouse/TalentBrew CI stamps closed on the nearest prior dated file when the id is absent from today's board snapshot (ADR-022). SerpAPI never auto-closes (ADR-046); a human may set closed on the last-seen dated row. G10: schema enum is new|active|closed only. Qualification approved|rejected lives on sidecar decision; queue approved|in_progress|failed|completed|deployed is a separate enum.",
+      "title": "Position / job title.",
+      "company": "Employer display name from companies.json name or source metadata.",
+      "pulled_at": "YYYY-MM-DD pull date on the job record.",
+      "status_updated_at": "UTC ISO datetime with Z suffix. Stamp now only when presence status changes. new→active stamps now; active→active copies the nearest-prior row timestamp; new id stamps now; Greenhouse/TalentBrew close-missing stamps now on newly closed prior rows; SerpAPI human close stamps now on the last-seen row.",
+      "location": "Best-effort location string.",
+      "url": "Absolute apply/host URL.",
+      "work_location_type": "Required arrangement enum (remote|hybrid|onsite|unknown). Replaces the former remote boolean.",
+      "description_text": "Plain text for keyword matching and analysis. Never scanned for arrangement tokens.",
+      "raw": "Optional truncated ATS payload for audit.",
+      "posted_at": "Required YYYY-MM-DD or null (ADR-039). Parsed at ingest from source post dates. Never invent from updated_at or pulled_at. Merge keeps prior date when new parse is null.",
+      "workday_requisition_id": "Optional. TalentBrew always writes the key (R[0-9]+ or null) from detail span.job-id.job-info / meta job-ats-req-id / JSON-LD identifier. Greenhouse and SerpApi omit the key. Not listing identity and not the merge/close-missing key (ADR-043)."
+    }
+  },
+  "companies_file": {
+    "path_pattern": ".ai/history/job-search/companies.json",
+    "notes": "Cross-platform company catalog (ADR-038). Replaces greenhouse/boards.json. Greenhouse pull reads enabled ats.platform=greenhouse rows. TalentBrew pull reads enabled company-slot rows (company.enabled, career origin). industries[] is catalog metadata; fetch scripts do not filter on it. Phase 2 discovery is parked.",
+    "fields": {
+      "companies": "Array of catalog company rows.",
+      "company_row": {
+        "id": "Kebab-case unique slug.",
+        "name": "Employer display name.",
+        "company_url": "Corporate homepage. Empty string allowed.",
+        "industries": "Array of unique non-empty strings. Empty array is untagged. Horizontal scale is more tags; vertical scale is more companies sharing a tag. No locked vocabulary in Phase 1.",
+        "ats": "Ingest source slot (ATS). Same shape as company slot.",
+        "company": "Ingest source slot (company site). platform and board_token must equal parent id. TalentBrew ingest reads enabled company slots (ADR-043). Greenhouse ingest still ignores this slot."
+      },
+      "source_slot": {
+        "enabled": "Per-source toggle. Both slots may be true.",
+        "platform": "On ats: greenhouse|lever|ashby|unknown, or empty when SerpApi (or other ingest) has not seen an ATS URL. On company: parent id.",
+        "board_token": "ATS board slug, or parent id on the company slot. Empty when ats is unpopulated.",
+        "career_url": "Board or careers URL. Empty string allowed. SerpApi first-fills blank fields only and never overwrites populated values. ATS listing URL is stored only when it contains both ats.platform and ats.board_token. Company-slot URL is the careers origin only (scheme://host, no path or query), stored only when that host contains a distinctive part of the employer name (e.g. https://jobs.firstcitizens.com for First Citizens Bank). Aggregator apply links are left empty.",
+        "source": "Empty string is default (unwritten). serpapi is stamped when SerpApi first-fills that slot and is then locked. manual is reserved for user-entered companies. Scripts never overwrite a non-empty source; a user may edit companies.json by hand. url_detect and url_index are parked (not in the live enum).",
+        "detected_at": "YYYY-MM-DD when this slot was first written, or null if unpopulated. Not overwritten on later upserts."
+      }
+    }
+  },
+  "analysis_file": {
+    "path_pattern": ".ai/history/job-search/<platform>/analyses/{encoded_job_id}-analysis.json",
+    "fields": {
+      "platform": "Same platform key as the pull envelope.",
+      "job_id": "Unsanitized JOB.id. File PK. Must match every analyses[].job_id.",
+      "analysis_id": "FK to the unique analyses[] row with is_current true. Stub 0; first fill retargets to 1.",
+      "updated_at": "UTC ISO datetime with Z when the envelope last changed.",
+      "analyses": {
+        "description": "Array of ANALYSIS revision objects. Exactly one is_current.",
+        "item_fields": {
+          "analysis_id": "Unique inside the file. Integer. Stub 0; first fill mutates that row to 1. 0 is not retained as history. Validators must not treat 0 as missing.",
+          "job_id": "Same as envelope job_id.",
+          "pull_date": "YYYY-MM-DD. Stub/first-fill: UTC create-day of the pull that wrote the file. Later from-scratch rows (G6): UTC calendar date of that analysis run.",
+          "revision": "Integer. Stub 0 only. First fill mutates to 1. Edits increment on the current row. From-scratch appends start at 1. revision 0 is never written again after first fill.",
+          "is_current": "Boolean. Exactly one true per file. Envelope analysis_id always equals that row.",
+          "run_id": "Minted by generate-analysis-queue.py. Copied onto this row at first-fill or from-scratch. null on pull stubs. Same value for every job filled from that queue file. Not P2-A1 telemetry (telemetry is the closed keys below).",
+          "analyzed_at": "UTC ISO datetime with Z when this revision was filled. null on stub.",
+          "decision": "null on stub. Filled: approved|rejected (analysis_decision_enum).",
+          "justification": "Concise overall rationale. null on stub.",
+          "experience": {
+            "requirements": [
+              {
+                "jd_excerpt": "Verbatim excerpt from the job description.",
+                "normalized": "Normalized requirement statement.",
+                "source_section": "JD section label (e.g. Requirements).",
+                "importance": "mandatory|preferred.",
+                "result": "met|partial|not_evidenced|contradicted.",
+                "evidence": "Prose citation of the locked fact used. No structured pointer into locked-job-data-model.json.",
+                "note": "Judgment: why met / not_evidenced / reject."
+              }
+            ]
+          },
+          "skills": {
+            "requirements": "Same REQUIREMENT object shape as experience.requirements."
+          },
+          "constraints": {
+            "requirements": "Same REQUIREMENT object shape as experience.requirements."
+          },
+          "external_context": {
+            "decision_impact": "Always none (decision_impact_enum).",
+            "sources": "Always []. Qualification never uses live research. Company/role research for core_themes is recorded on core_themes, not here (ADR-053)."
+          },
+          "core_themes": {
+            "notes": "Optional on pull stubs and historical fills. Required on approved fills going forward (ADR-053). Shared by resume-tailor and cover-letter fill. job_skill_1..3 must exist in locked-skills.json. strength_1..3 and opening_hook are analysis-synthesized strings.",
+            "job_skill_1": "Primary locked hard skill matching a top JD requirement.",
+            "job_skill_2": "Secondary locked hard skill matching a core JD requirement.",
+            "job_skill_3": "Tertiary locked hard skill matching a JD requirement.",
+            "strength_1": "Primary strategic strength theme (architecture/governance).",
+            "strength_2": "Secondary strategic strength theme (leadership/execution).",
+            "strength_3": "Tertiary strategic strength theme (delivery/business impact).",
+            "opening_hook": "One-sentence value proposition for the target company and role."
+          },
+          "started_at": "P2-A1. UTC ISO datetime with Z when this analysis turn started. null-ok (stubs, batch/nested).",
+          "ended_at": "P2-A1. UTC ISO datetime with Z when this analysis turn ended. null-ok.",
+          "tokens_in": "P2-A1. Integer >= 0 or null. Do not invent on batch/nested invokes.",
+          "tokens_out": "P2-A1. Integer >= 0 or null.",
+          "cache_tokens_in": "P2-A1. Integer >= 0 or null.",
+          "thinking_tokens": "P2-A1. Integer >= 0 or null.",
+          "context_usage_percent": "P2-A1. Number 0-100 or null.",
+          "context_metric_status": "P2-A1. not_programmatically_available | observed. observed only when at least one usage field is non-null."
+        }
+      }
+    }
+  },
+  "analysis": {
+    "required_fields": [
+      "analysis_id",
+      "job_id",
+      "pull_date",
+      "revision",
+      "is_current",
+      "run_id",
+      "analyzed_at",
+      "decision",
+      "justification",
+      "experience",
+      "skills",
+      "constraints",
+      "external_context",
+      "started_at",
+      "ended_at",
+      "tokens_in",
+      "tokens_out",
+      "cache_tokens_in",
+      "thinking_tokens",
+      "context_usage_percent",
+      "context_metric_status"
+    ],
+    "field_notes": {
+      "analysis_id": "Unique inside the file. Integer. Stub 0; first fill mutates that row to 1. 0 is not retained as history. Validators must not treat 0 as missing.",
+      "job_id": "Same as envelope job_id.",
+      "pull_date": "YYYY-MM-DD. Stub/first-fill: UTC create-day of the pull that wrote the file. Later from-scratch rows (G6): UTC calendar date of that analysis run.",
+      "revision": "Integer. Stub 0 only. First fill mutates to 1. Edits increment on the current row. From-scratch appends start at 1. revision 0 is never written again after first fill.",
+      "is_current": "Boolean. Exactly one true per file. Envelope analysis_id always equals that row.",
+      "run_id": "Minted by generate-analysis-queue.py. Copied onto this row at first-fill or from-scratch. null on pull stubs. Not P2-A1 telemetry.",
+      "analyzed_at": "UTC ISO datetime with Z when this revision was filled. null on stub.",
+      "decision": "null on stub. Filled: approved|rejected (analysis_decision_enum).",
+      "justification": "Concise overall rationale. null on stub.",
+      "experience": "Object { requirements: REQUIREMENT[] }.",
+      "skills": "Object { requirements: REQUIREMENT[] }.",
+      "constraints": "Object { requirements: REQUIREMENT[] }.",
+      "core_themes": "Optional object. Omitted on stubs, historical fills, and rejected jobs. Approved fills going forward write all seven strings (ADR-053). Not a qualification input.",
+      "started_at": "P2-A1 telemetry. UTC ISO datetime with Z or null.",
+      "ended_at": "P2-A1 telemetry. UTC ISO datetime with Z or null.",
+      "tokens_in": "P2-A1 telemetry. Integer >= 0 or null. Batch/nested writes null.",
+      "tokens_out": "P2-A1 telemetry. Integer >= 0 or null.",
+      "cache_tokens_in": "P2-A1 telemetry. Integer >= 0 or null.",
+      "thinking_tokens": "P2-A1 telemetry. Integer >= 0 or null.",
+      "context_usage_percent": "P2-A1 telemetry. Number 0-100 or null.",
+      "context_metric_status": "P2-A1 telemetry. not_programmatically_available | observed. Required; not null."
+    }
+  },
+  "requirement": {
+    "required_fields": [
+      "jd_excerpt",
+      "normalized",
+      "source_section",
+      "importance",
+      "result",
+      "evidence",
+      "note"
+    ],
+    "field_notes": {
+      "jd_excerpt": "Verbatim excerpt from the job description.",
+      "normalized": "Normalized requirement statement.",
+      "source_section": "JD section label (e.g. Requirements).",
+      "importance": "mandatory|preferred.",
+      "result": "met|partial|not_evidenced|contradicted.",
+      "evidence": "Prose citation of the locked fact used. No structured pointer into locked-job-data-model.json.",
+      "note": "Judgment: why met / not_evidenced / reject."
+    }
+  },
+  "external_context": {
+    "required_fields": [
+      "decision_impact",
+      "sources"
+    ],
+    "field_notes": {
+      "decision_impact": "Always none.",
+      "sources": "Always [] by policy. Company/compensation WebSearch and WebFetch live in the resume-tailor engineering log, not on the analysis sidecar."
+    }
+  },
+  "approved_file": {
+    "path_pattern": ".ai/history/job-search/<platform>/approved-jobs.json",
+    "fields": {
+      "platform": "Platform key.",
+      "jobs": "Array of APPROVED_JOB rows. Pull creates the envelope only if missing (jobs: []). Never inserts rows. Orchestrator writes consume/claim/copy. CD deploy stamps deployed + artifacts_url after Drive success."
+    }
+  },
+  "approved_job": {
+    "required_at_g10": [
+      "id",
+      "analysis_id",
+      "approved_at"
+    ],
+    "planned_fields": [
+      "id",
+      "analysis_id",
+      "approved_at",
+      "status",
+      "status_updated_at",
+      "run_id",
+      "attempt_count",
+      "started_at",
+      "completed_at",
+      "sandbox_path",
+      "feature_branch",
+      "pr_number",
+      "pr_url",
+      "artifacts_url",
+      "failure",
+      "notes"
+    ],
+    "shipped_today": [
+      "id",
+      "analysis_id",
+      "approved_at",
+      "status",
+      "status_updated_at",
+      "started_at",
+      "attempt_count",
+      "completed_at",
+      "sandbox_path",
+      "feature_branch",
+      "pr_number",
+      "pr_url",
+      "artifacts_url",
+      "failure"
+    ],
+    "optional_today": [
+      "notes",
+      "artifacts_url",
+      "failure"
+    ],
+    "field_notes": {
+      "id": "JOB.id. Locate sidecar from platform folder plus encoded job_id under analyses/. Do not store file paths.",
+      "analysis_id": "FK to sidecar analyses[].analysis_id (G4). First fill: 1. Edit-bump does not change this FK. G6 from-scratch still-approved: orchestrator retargets to the new current id and stamps approved_at now. Batch consume also retargets post-handoff approved decisions.",
+      "approved_at": "UTC ISO datetime with Z of the orchestrator upsert. Refresh on every approved consume (first-fill and update-fill).",
+      "status": "queue_status_enum: approved|in_progress|failed|completed|deployed. Not jobs.json.status. Consume upserts approved (including post-handoff retarget). Orch claims in_progress. Tailor copy writes completed or failed. CD stamps deployed after Drive success.",
+      "status_updated_at": "Required UTC ISO datetime with Z when queue status last changed. First-fill stamps consume now.",
+      "run_id": "Parked (ledger session). Not on the ledger row. P2-A1 telemetry is sidecar analyses[] keys (ADR-033), not this field. Sidecar run_id is the queue copy minted by generate-analysis-queue.py.",
+      "attempt_count": "Required null-ok integer. First-fill is JSON null. Resume-tailor skill increments (null→0)+1 on success or failure. Claim does not increment.",
+      "started_at": "Required null-ok UTC Z. First-fill is JSON null. Resume-tailor skill stamps when that queue job starts. Claim does not write this.",
+      "completed_at": "Required null-ok UTC Z. First-fill and newly minted tailor-queue rows are JSON null. Skill stamps on success. consume_tailor_queue copies the queue value (does not stamp script-now).",
+      "sandbox_path": "Required null-ok. First-fill is JSON null. Copied from the tailor-request row after tailor_complete. Join key to manifest resume_tailor_directory (normalized, trailing slash ignored). On reuse, this copied path wins over newly minted ADR-045 slugs.",
+      "feature_branch": "Required null-ok. First-fill is JSON null. Copied from the tailor-request row. On reuse, checkout this branch when it still exists.",
+      "pr_number": "Required null-ok integer. First-fill is JSON null. Copied after tailor_complete (reuse existing open PR or a new PR if merged/closed).",
+      "pr_url": "Required null-ok URI. First-fill is JSON null. Copied after tailor_complete.",
+      "artifacts_url": "Google Drive {company}/{role} folder URI. CD-only. Empty until deployed.",
+      "failure": "P2-E1 object when status is failed: { code, message, failed_at, step }. code enum: collision|tailor_preflight|tailor_skill|validate|git|pr_create|unknown.",
+      "notes": "Optional free text."
+    }
+  },
+  "tailor_request_file": {
+    "path_pattern": ".ai/history/resume-tailor/queue/{run_id}-tailor-request.json",
+    "notes": "Minted by generate-tailor-queue.py from status: approved ledger rows plus last-seen listing and is_current sidecar. Live files are gitignored. Golden samples live under .github/scripts/resume-tailor/tests/fixtures/. Orchestrator copies terminal rows onto approved-jobs.json and deletes the file when drained.",
+    "fields": {
+      "run_id": "uuid4 hex, no hyphens. Equals filename stem. Minted by generate-tailor-queue.py.",
+      "batch_number": "Integer >= 1 in selection order across sliced files.",
+      "platform": "ATS key (greenhouse).",
+      "created_date": "UTC calendar date the queue file was minted (YYYY-MM-DD).",
+      "jobs": "Ordered array of P2-J1 payload rows. Mint status is pending. Each row also carries ledger resume-tailor keys: attempt_count, pr_url, pr_number, sandbox_path, feature_branch (copied as stored, including null) plus started_at and completed_at always null at mint. Terminal status is tailor_complete (plus those keys populated) or failed (plus failure; keep started_at, increment attempt_count).",
+      "job_row": "Minted keys: id, status, company, title, company_slug, position_slug, location, url, description_text, decision, justification, unmet_mandatory, mentioned_skills, started_at, attempt_count, completed_at, pr_url, pr_number, sandbox_path, feature_branch. id is the listing job_id (ledger PK). company_slug is kebab_case(company). position_slug is kebab_case(title) plus a source_job_id suffix (ADR-045): last 10 characters when longer than 10, otherwise the full source_job_id. Never workday_requisition_id. When ledger sandbox_path/feature_branch are populated, those copied paths win over minted slugs for reuse. Manual resume-tailor (no queue) keeps unsuffixed parent-folder slugs."
+    }
+  },
+  "analysis_request_file": {
+    "path_pattern": ".ai/history/job-search/queue/{run_id}-analysis-request.json",
+    "notes": "Minted by generate-analysis-queue.py. Live files are gitignored. Golden samples live under .github/scripts/job-search/tests/fixtures/. Analysis copies envelope run_id onto each filled sidecar row. The queue row is the analysis JD Source of Truth (ADR-050).",
+    "fields": {
+      "run_id": "uuid4 hex, no hyphens. Equals filename stem. Same value copied onto filled sidecar analyses[] rows.",
+      "batch_number": "Integer >= 1 in selection order across sliced files.",
+      "platform": "ATS key (greenhouse).",
+      "created_date": "UTC calendar date the queue file was minted (YYYY-MM-DD). Not envelope pull_date.",
+      "invoke": "Required enum manual|batch. Not mode. Generator --invoke optional, default batch, independent of --job-id. Orchestrator never passes --invoke (P2-G6s --job-id stays batch). Human may pass --invoke manual with --job-id. Skill reads this envelope key only.",
+      "jobs": "Ordered array of { id, status, company, title, location, work_location_type, url, description_text, skip_reason? }. status is pending at mint, analysis_complete after that job's sidecar persist+validate. Listing fields snapshot normalized job data from the last-seen dated jobs.json at mint. skip_reason is optional free text on skip; clear it when status becomes analysis_complete. No per-job mode."
+    }
+  },
+  "criteria_file": {
+    "path": ".ai/guardrails/locked-job-search-criteria.json",
+    "notes": "Multi-id envelope (ADR-041 amends ADR-009). schema $defs.CRITERIA_FILE. job-analysis does not read this file.",
+    "fields": {
+      "criteria": "Array of pipeline rows with unique id and pipeline.",
+      "jsc_001": "pipeline=greenhouse. Title/location/work_location_type/keywords filters only. Loaded by fetch_greenhouse_jobs.py.",
+      "jsc_002": "pipeline=google_jobs. SerpApi request fields, max_searches billed-request cap, plus empty post-filter title/location includes. Loaded by fetch_serpapi_jobs.py.",
+      "jsc_003": "pipeline=talentbrew. Capital One company-slot pull. HTTP/query ints, facets (null=omit FacetFilters), titles/locations/work_location_type post-filters. Loaded by fetch_talentbrew_jobs.py. No keywords or match_mode.",
+      "jsc_004": "pipeline=greenhouse_discovery. Search chips matrix, pagination, probe_verification. Loaded by discover_greenhouse_boards.py. Insert-new companies upsert with ats.enabled=true on probe success (ADR-054)."
+    },
+    "greenhouse_discovery_jsc_004": {
+      "search_chips.search_term": "Array of title/role query chips. Cartesian product with non-empty filter chips.",
+      "search_chips.location": "Optional location filters.",
+      "search_chips.date_posted": "Optional date posted filters.",
+      "search_chips.work_type": "Optional work arrangement filters (e.g., ['remote']).",
+      "search_chips.employment_type": "Optional employment type filters (e.g., ['Full time']).",
+      "pagination.max_pages_per_query": "Max pages to paginate per search chip combination (default 5).",
+      "pagination.request_delay_ms": "Sleep between successful Inertia HTTP calls (default 1000).",
+      "pagination.timeout_seconds": "urllib timeout for Inertia and probe GETs (default 30).",
+      "pagination.max_retries": "Retries on transient 429/503 responses with exponential backoff (default 3).",
+      "probe_verification": "Boolean. If true, probes boards-api.greenhouse.io before marking ats.enabled=true on new companies."
+    },
+    "talentbrew_jsc_003": {
+      "records_per_page": "RecordsPerPage (SoT 100).",
+      "search_type/sort_criteria/sort_direction/distance/radius_unit_type/active_facet_id/show_radius": "Same-named TalentBrew list query params. search_keywords/search_location null means unfiltered catalog.",
+      "timeout_seconds": "urllib timeout for list and detail GETs.",
+      "request_delay_ms": "Sleep between successful HTTP calls.",
+      "max_retries/retry_status_codes": "Retry those statuses; halt if still failing.",
+      "max_pages": "null paginates until empty/hasJobs false; integer is a hard stop.",
+      "titles.include all": "Exact token all (case-insensitive) skips the title include gate and is stripped so it never substring-matches. SoT include list does not contain all.",
+      "facets": "null omits that FacetFilters group. Non-null array is display labels (data-display); unknown label fails closed. Multiple values in one array are OR. facets.locations is the site city facet; post-filter locations remains NJ/NY geography."
+    },
+    "talentbrew_facets_map": {
+      "teams": "FacetType 1. Labels include Technology, Engineering, Cyber.",
+      "country": "FacetType 2.",
+      "state": "FacetType 3.",
+      "locations": "FacetType 4 city labels.",
+      "divisions": "FacetType 6.",
+      "students_and_grads": "FacetType 5 FieldName custom_fields.Campus.",
+      "remote": "FacetType 5 FieldName custom_fields.Remote. Labels Not Remote / Remote / Remote Eligible.",
+      "sponsorship": "FacetType 5 FieldName hours_per_week.",
+      "role_type": "FacetType 5 FieldName industry.",
+      "vanity_tag": "FacetType 5 FieldName custom_fields.VanityTag."
+    },
+    "talentbrew_search_results_map": {
+      "source_job_id": "List a[data-job-id] agreeing with href last segment /job/{city}/{slug}/{orgId}/{jobSeqNo}. Not inner span. Not Save Job button. Not Workday R…",
+      "id": "talentbrew:{board_token}:{source_job_id}",
+      "workday_requisition_id": "Detail span.job-id.job-info / meta job-ats-req-id / JSON-LD identifier",
+      "title": "List a h2",
+      "location": "List a .job-location only. Multi-city Primary Address stays in raw.primary_address.",
+      "work_location_type": "Detail chrome: Primary Address or header containing | Remote; JSON-LD addressCountry Remote; custom_fields.Remote-* (Not-Remote -> onsite). Title (Remote)/Remote Eligible is fallback. Never scan description_text.",
+      "posted_at": "List .job-date-posted MM/DD/YYYY or JSON-LD unpadded YYYY-M-D",
+      "description_text": "html_to_text of div.ats-description, else JSON-LD description",
+      "url": "career origin + list href",
+      "raw.org_id": "href second-to-last segment"
+    },
+    "jsc_002_wire_map": {
+      "search_query.include": "One billed google_jobs search per string (not OR-joined).",
+      "location.include": "Cartesian with search_query. Empty include (no non-blank entries) is nationwide: no SerpApi location param, regardless of include_remote.",
+      "industry_query": "Appended to every q; does not multiply calls.",
+      "include_remote": "If true, send ltype=1 (Google Jobs remote chip). Does not gate whether a nationwide search runs.",
+      "max_searches": "Required integer >= 1 on jsc_002. Cap on billed SerpApi google_jobs HTTP requests this pull may spend (page 1 and page 2 each count). Not a cap on how many jobs are kept after normalize/dedupe. Preflight QUOTA_STOP if planned fan-out * 2 exceeds this value, plan_searches_left, or daily_cap. daily_cap = min(max_searches, floor(plan_searches_left / utc_days_remaining_including_today)).",
+      "date_posted": "Required. Catalog yesterday|last_3_days|last_week|last_month maps to q_suffix + uds.",
+      "country_code/language_code/google_domain/search_radius_kilometers/google_filter_token": "Shared on every fan-out call; omit empties.",
+      "next_page_token": "Keep empty on criteria. Runtime follows at most one response token per query."
+    },
+    "serpapi_jobs_results_map": {
+      "title": "title",
+      "company": "company_name",
+      "location": "location string",
+      "url": "apply_options title==via link, else share_link",
+      "description_text": "description + job_highlights + unused apply links",
+      "work_location_type": "extract_work_location_type on location + extensions only",
+      "posted_at": "parse detected_extensions.posted_at / extensions chip",
+      "source_job_id": "sha256(opaque job_id) first 8 bytes as decimal",
+      "id": "serpapi:{kebab_case(via)}:{source_job_id}"
+    },
+    "quota": {
+      "daily": "jsc_002.max_searches is the billed-search ceiling for the run. daily_cap = min(max_searches, floor(plan_searches_left / utc_days_remaining_including_today)). There is no max-jobs keep-limit; all unique jobs that survive normalize/filter are written.",
+      "QUOTA_STOP": "Exit 0 with Mode skip when preflight planned searches exceed budget; Greenhouse commit continues.",
+      "account_api": "Free account.json is authoritative; do not rely on gitignored quota.json."
+    }
+  }
+}

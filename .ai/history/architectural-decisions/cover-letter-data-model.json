@@ -1,0 +1,64 @@
+{
+  "id": "cover_letter_model_001",
+  "version": "1.0.0",
+  "created_on": "2026-09-11T16:00:00Z",
+  "modified_on": "2026-09-11T16:00:00Z",
+  "description": "Human-readable join contract for cover-letter fill. fill_cover_letter.py discovers {{TOKENS}} in locked-cover-letter-template.docx, binds locked contact fields by naming convention, and overlays sandbox tailored-cover-letter.md section blocks (ADR-053). This file is documentation, not a nested cover-letter instance.",
+  "layout_source_of_truth": ".ai/guardrails/locked-cover-letter-template.docx",
+  "master_prose_source": ".ai/guardrails/locked-cover-letter-template.md",
+  "poc_sources": {
+    "content": ".ai/guardrails/locked-cover-letter-template.md",
+    "layout": ".ai/guardrails/locked-cover-letter-template.docx"
+  },
+  "core_themes_source": "ANALYSIS.core_themes copied onto *-tailor-request.json and minted into engineering-log.md. Resume-tailor resolves nested skill/strength/hook slots from that log, not by re-researching.",
+  "fill_cover_letter": {
+    "script": "scripts/cover-letter-docx/fill_cover_letter.py",
+    "cli": "python scripts/cover-letter-docx/fill_cover_letter.py --sandbox .ai/history/resume-tailor/{company}/{position}",
+    "load_order": [
+      ".ai/history/architectural-decisions/cover-letter-data-model.json",
+      ".ai/guardrails/locked-contact.json",
+      ".ai/guardrails/locked-cover-letter-template.docx",
+      "sandbox job-description.md",
+      "sandbox tailored-cover-letter.md"
+    ],
+    "abort_rules": [
+      "Abort if locked-contact.json or required contact fields are missing.",
+      "Abort if tailored-cover-letter.md is missing required sections Opener, Body 1, Body 2, Call to Action, Closing.",
+      "Abort if a template token names an unknown object or field.",
+      "Abort if any {{ remains after fill.",
+      "Never write to .ai/guardrails/ during a normal resume-tailor run."
+    ],
+    "token_grammar": {
+      "adr": "ADR-053",
+      "section_blocks": {
+        "COVER_LETTER_SUBJECT": "Subject line from tailored-cover-letter.md metadata.",
+        "COVER_LETTER_GREETING": "Salutation from tailored-cover-letter.md metadata.",
+        "COVER_LETTER_OPENER": "## Opener paragraph.",
+        "COVER_LETTER_BODY_1": "## Body 1 paragraph (skills and STRENGTH_1).",
+        "COVER_LETTER_BODY_2": "## Body 2 paragraph (STRENGTH_2, STRENGTH_3, JOB_SKILL_3).",
+        "COVER_LETTER_CALL_TO_ACTION": "## Call to Action paragraph.",
+        "COVER_LETTER_SIGN_OFF": "First line of ## Closing (Sincerely,)."
+      },
+      "nested_slots": {
+        "notes": "Resolved by the resume-tailor agent into tailored-cover-letter.md prose before fill. The Word filler does not expand JOB_SKILL_* or STRENGTH_* inside section blocks.",
+        "JOB_SKILL_1": "core_themes.job_skill_1",
+        "JOB_SKILL_2": "core_themes.job_skill_2",
+        "JOB_SKILL_3": "core_themes.job_skill_3",
+        "STRENGTH_1": "core_themes.strength_1",
+        "STRENGTH_2": "core_themes.strength_2",
+        "STRENGTH_3": "core_themes.strength_3",
+        "OPENING_HOOK": "core_themes.opening_hook"
+      },
+      "locked_contact": "{{CONTACT_FULL_NAME}} is first_name plus last_name. Other CONTACT_* tokens bind like fill_resume.py.",
+      "runtime": {
+        "CURRENT_DATE": "Date line from tailored-cover-letter.md, else UTC today long form.",
+        "COMPANY_NAME": "Company from job-description.md H1.",
+        "JOB_TITLE": "Role from job-description.md H1.",
+        "JOB_ID": "sandbox job-id.txt source_job_id suffix when present.",
+        "REF_NUM": "Alias of JOB_ID for requisition placeholders.",
+        "RECIPIENT_NAME": "Recipient metadata or Hiring Team."
+      }
+    },
+    "output": "sandbox John_Doe_Cover_Letter_{Company_Title_Case}.docx"
+  }
+}

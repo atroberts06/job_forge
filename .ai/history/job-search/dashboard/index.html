@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Job Search Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="topbar">
+      <h1>Job Search Dashboard</h1>
+      <div class="topbar-actions">
+        <span class="badge">Local POC</span>
+        <button type="button" id="refresh-btn" class="btn btn-refresh">Refresh</button>
+      </div>
+    </header>
+
+    <section class="filters" aria-label="Ingest, join and execution filters">
+      <div class="chip-row" id="ingest-row">
+        <span class="chip-label">Source</span>
+        <select id="source-filter" class="filter-select" aria-label="Filter by data source"></select>
+        <span class="chip-label">Company</span>
+        <select id="company-filter" class="filter-select" aria-label="Filter by company"></select>
+      </div>
+      <div class="chip-row" id="join-row">
+        <span class="chip-label">Join</span>
+        <div id="join-chips" class="chips"></div>
+      </div>
+      <div class="chip-row" id="exec-row">
+        <span class="chip-label">Execution</span>
+        <div id="exec-chips" class="chips"></div>
+      </div>
+    </section>
+
+    <div class="body">
+      <section class="board">
+        <section class="table-wrap">
+          <table id="jobs-table">
+            <thead>
+              <tr>
+                <th>Pipeline</th>
+                <th>Execution</th>
+                <th>Title</th>
+                <th>Company</th>
+                <th>Platform</th>
+                <th>Job ID</th>
+                <th>Location</th>
+                <th>Work Location</th>
+                <th>Pulled</th>
+                <th>Status Updated</th>
+                <th>Link</th>
+                <th>Artifacts</th>
+              </tr>
+            </thead>
+            <tbody id="jobs-body">
+              <tr><td colspan="12">Loading jobs…</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="pending-analysis" class="widget" aria-label="Pending or skipped analysis">
+          <h2>Pending / skipped analysis</h2>
+          <p class="muted">Queue rows that are not <code>analysis_complete</code>. Read-only.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Job ID</th>
+                  <th>Run ID</th>
+                  <th>Batch</th>
+                  <th>Queue file</th>
+                  <th>Skip reason</th>
+                </tr>
+              </thead>
+              <tbody id="pending-body">
+                <tr><td colspan="5">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="pr-ready" class="widget" aria-label="Pull requests ready for review">
+          <h2>PR ready for review</h2>
+          <p class="muted">Ledger rows with <code>status: completed</code> and a PR URL.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Job ID</th>
+                  <th>Status</th>
+                  <th>PR #</th>
+                  <th>PR</th>
+                </tr>
+              </thead>
+              <tbody id="pr-ready-body">
+                <tr><td colspan="5">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="in-progress" class="widget" aria-label="In progress resume-tailor">
+          <h2>In progress</h2>
+          <p class="muted">Ledger rows with <code>status: in_progress</code>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Job ID</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="in-progress-body">
+                <tr><td colspan="3">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="failed" class="widget" aria-label="Failed resume-tailor">
+          <h2>Failed</h2>
+          <p class="muted">Ledger rows with <code>status: failed</code>.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Job ID</th>
+                  <th>Code</th>
+                  <th>Step</th>
+                  <th>Message</th>
+                  <th>Failed at</th>
+                </tr>
+              </thead>
+              <tbody id="failed-body">
+                <tr><td colspan="6">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <div class="rail">
+        <aside id="log-panel" class="panel log-panel" aria-label="Orchestrator run log">
+          <h2>Orchestrator log</h2>
+          <div class="log-body">
+            <pre id="log-viewport" class="log-viewport" aria-live="polite"></pre>
+            <div id="log-telemetry" class="log-telemetry" aria-label="Orchestrator run telemetry"></div>
+          </div>
+        </aside>
+        <aside id="panel" class="panel" aria-live="polite">
+          <h2>Current analysis</h2>
+          <div id="panel-body">
+            <p class="muted panel-placeholder">Select a job.</p>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

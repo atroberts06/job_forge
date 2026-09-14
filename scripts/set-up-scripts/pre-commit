@@ -1,0 +1,267 @@
+#!/bin/sh
+# Canonical README directory-map rebuild. Git invokes this file on macOS and
+# Windows (Git for Windows runs hooks via sh). pre-commit.ps1 is a thin wrapper.
+
+# Git Bash --noprofile leaves System32 first; Windows find.exe/sort.exe are not POSIX.
+if [ -d /usr/bin ]; then
+    PATH="/usr/bin:/bin:$PATH"
+    export PATH
+fi
+
+FORCE=0
+for arg in "$@"; do
+    case "$arg" in
+        --force|-Force|-force) FORCE=1 ;;
+    esac
+done
+
+# 1. Check if any file additions, deletions, or renames are staged
+if [ "$FORCE" -eq 0 ]; then
+    if ! git diff --cached --name-status | grep -q '^[ADR]'; then
+        exit 0
+    fi
+fi
+
+echo "Refining directory tier levels and updating README.md..."
+
+README_FILE="README.md"
+TEMP_FILE="README.md.tmp"
+DESC_FILE="README.md.desc.tmp"
+
+normalize_doc_path() {
+    # shellcheck disable=SC3043
+    local rel normalized
+    rel=$1
+    normalized=$(printf '%s' "$rel" | tr '\\' '/' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    if [ -z "$normalized" ] || [ "$normalized" = "/" ]; then
+        return 1
+    fi
+    case "$normalized" in
+        /*) ;;
+        *) normalized="/${normalized#/}" ;;
+    esac
+    printf '%s' "$normalized"
+    return 0
+}
+
+should_skip_map_path() {
+    # shellcheck disable=SC3043
+    local clean_rel is_container name root root_trim git_path
+    clean_rel=$1
+    is_container=$2
+    name=$3
+
+    for root in "/.venv/" "/.pytest_cache/" "/dist/" "/node_modules/" "/__pycache__/"; do
+        root_trim=${root%/}
+        case "$clean_rel" in
+            "$root_trim"|"$root"*) return 0 ;;
+        esac
+    done
+
+    for root in "/.ai/history/resume-tailor/" "/.ai/history/job-search/" "/.ai/history/defects/" "/.cursor/plans/"; do
+        case "$clean_rel" in
+            "$root") ;;
+            "$root"*) return 0 ;;
+        esac
+    done
+
+    case "$clean_rel" in
+        */fixtures|*/fixtures/|*/fixtures/*|/fixtures|/fixtures/) return 0 ;;
+    esac
+
+    if [ "$is_container" -eq 0 ]; then
+        if [ "$name" = "conftest.py" ]; then
+            return 0
+        fi
+        case "$name" in
+            test_*.py) return 0 ;;
+        esac
+    fi
+
+    git_path=$(printf '%s' "$clean_rel" | sed 's#^/##;s#/$##')
+    if [ -n "$git_path" ]; then
+        if git check-ignore -q -- "$git_path" 2>/dev/null; then
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+strip_cr() {
+    printf '%s' "$1" | tr -d '\r'
+}
+
+lookup_desc() {
+    # shellcheck disable=SC3043
+    local want found
+    want=$1
+    found=$(awk -F '\t' -v p="$want" '$1 == p { print substr($0, length($1) + 2); exit }' "$DESC_FILE")
+    if [ -n "$found" ]; then
+        printf '%s' "$found"
+        return 0
+    fi
+    return 1
+}
+
+# 2. Extract existing custom descriptions (preserve hand-authored text)
+: > "$DESC_FILE"
+if [ -f "$README_FILE" ]; then
+    while IFS= read -r raw || [ -n "$raw" ]; do
+        line=$(strip_cr "$raw")
+        trimmed=$(printf '%s' "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        case "$trimmed" in
+            '- `'*)
+                path=$(printf '%s' "$trimmed" | sed -n 's/^- `\([^`]*\)`[[:space:]]*->[[:space:]]*\(.*\)$/\1/p')
+                desc=$(printf '%s' "$trimmed" | sed -n 's/^- `\([^`]*\)`[[:space:]]*->[[:space:]]*\(.*\)$/\2/p')
+                if [ -z "$path" ] || [ -z "$desc" ]; then
+                    continue
+                fi
+                desc=$(printf '%s' "$desc" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                if [ "$desc" = "Add documentation details here." ]; then
+                    continue
+                fi
+                if ! norm=$(normalize_doc_path "$path"); then
+                    continue
+                fi
+                local_path=${norm#/}
+                if [ -e "$local_path" ] || [ -d "$local_path" ]; then
+                    printf '%s\t%s\n' "$norm" "$desc" >> "$DESC_FILE"
+                fi
+                ;;
+        esac
+    done < "$README_FILE"
+fi
+
+desc_count=0
+if [ -s "$DESC_FILE" ]; then
+    desc_count=$(wc -l < "$DESC_FILE" | sed 's/[[:space:]]//g')
+fi
+echo "Preserved ${desc_count} existing description(s)."
+
+# 3. Rebuild the Directory Map zone
+rm -f "$TEMP_FILE"
+INSIDE_BLOCK=0
+SAW_START=0
+
+if [ ! -f "$README_FILE" ]; then
+    echo "ERROR: README.md is missing <!-- START_DIRECTORY_MAP --> / <!-- END_DIRECTORY_MAP --> markers." >&2
+    rm -f "$DESC_FILE"
+    exit 1
+fi
+
+emit_map_entries() {
+    paths_tmp="${TEMP_FILE}.paths"
+
+    # Tracked + untracked (non-ignored) files. Faster and safer than find on Windows.
+    # Do not create paths_tmp before git ls-files or it appears as an untracked map row.
+    git ls-files --cached --others --exclude-standard -z | tr '\0' '\n' |
+    while IFS= read -r rel || [ -n "$rel" ]; do
+        [ -z "$rel" ] && continue
+        case "$rel" in
+            README.md.tmp|README.md.desc.tmp|README.md.tmp.paths) continue ;;
+            .ai/history/resume-tailor/*|.ai/history/job-search/*|.ai/history/defects/*|.cursor/plans/*) continue ;;
+        esac
+        printf '%s\n' "$rel"
+        prefix=$rel
+        while :; do
+            case "$prefix" in
+                */*) prefix=${prefix%/*} ;;
+                *) break ;;
+            esac
+            [ -n "$prefix" ] || break
+            printf '%s\n' "$prefix"
+        done
+    done | LC_ALL=C sort -u > "$paths_tmp"
+    for seeded in \
+        .ai/history/resume-tailor \
+        .ai/history/job-search \
+        .ai/history/defects \
+        .cursor/plans
+    do
+        if [ -d "$seeded" ]; then
+            printf '%s\n' "$seeded" >> "$paths_tmp"
+        fi
+    done
+    LC_ALL=C sort -u "$paths_tmp" -o "$paths_tmp"
+
+    while IFS= read -r rel || [ -n "$rel" ]; do
+        [ -z "$rel" ] && continue
+        if ! clean=$(normalize_doc_path "$rel"); then
+            continue
+        fi
+        is_container=0
+        if [ -d "$rel" ]; then
+            is_container=1
+            case "$clean" in
+                */) ;;
+                *) clean="${clean}/" ;;
+            esac
+        fi
+        name=$(basename "$rel")
+        if should_skip_map_path "$clean" "$is_container" "$name"; then
+            continue
+        fi
+
+        test_path=$(printf '%s' "$clean" | sed 's#^/##;s#/$##')
+        case "$test_path" in
+            */*)
+                base_depth=$(printf '%s' "$test_path" | tr -cd '/' | wc -c | sed 's/[[:space:]]//g')
+                ;;
+            *)
+                base_depth=0
+                ;;
+        esac
+        if [ "$base_depth" -gt 4 ]; then
+            continue
+        fi
+
+        indent=$(printf '%*s' $((base_depth * 4)) '')
+        current_desc="Add documentation details here."
+        if looked=$(lookup_desc "$clean"); then
+            current_desc="$looked"
+        fi
+        printf '%s- `%s` -> %s\n' "$indent" "$clean" "$current_desc"
+    done < "$paths_tmp"
+    rm -f "$paths_tmp"
+}
+
+while IFS= read -r raw || [ -n "$raw" ]; do
+    line=$(strip_cr "$raw")
+    trimmed=$(printf '%s' "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+    if [ "$trimmed" = "<!-- START_DIRECTORY_MAP -->" ]; then
+        INSIDE_BLOCK=1
+        SAW_START=1
+        printf '%s\n' "<!-- START_DIRECTORY_MAP -->" >> "$TEMP_FILE"
+        printf '%s\n' "## Workspace Architecture & Directory Map" >> "$TEMP_FILE"
+        printf '%s\n' "" >> "$TEMP_FILE"
+        emit_map_entries >> "$TEMP_FILE"
+        continue
+    fi
+
+    if [ "$trimmed" = "<!-- END_DIRECTORY_MAP -->" ]; then
+        INSIDE_BLOCK=0
+        printf '%s\n' "" >> "$TEMP_FILE"
+        printf '%s\n' "<!-- END_DIRECTORY_MAP -->" >> "$TEMP_FILE"
+        continue
+    fi
+
+    if [ "$INSIDE_BLOCK" -eq 0 ]; then
+        printf '%s\n' "$line" >> "$TEMP_FILE"
+    fi
+done < "$README_FILE"
+
+rm -f "$DESC_FILE"
+
+if [ "$SAW_START" -eq 0 ] || [ ! -f "$TEMP_FILE" ]; then
+    echo "ERROR: README.md is missing <!-- START_DIRECTORY_MAP --> / <!-- END_DIRECTORY_MAP --> markers." >&2
+    rm -f "$TEMP_FILE"
+    exit 1
+fi
+
+mv -f "$TEMP_FILE" "$README_FILE"
+if [ "$FORCE" -eq 0 ]; then
+    git add "$README_FILE"
+fi
+exit 0

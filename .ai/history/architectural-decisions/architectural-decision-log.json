@@ -1,0 +1,2485 @@
+{
+    "$schema": "https://json-schema.org/draft-07/schema#",
+    "log_id": "adr_log_001",
+    "project": "Resume Builder AI Automation",
+    "last_updated": "2026-09-14",
+    "decisions": [
+      {
+        "decision_id": "ADR-001",
+        "title": "Standardization of the Resume Data Model",
+        "status": "Approved",
+        "created_date": "2026-07-15",
+        "approval_date": "2026-07-15",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "context": {
+          "problem_statement": "The system lacked a standardized format to store personal profiles and historical job experience. To enable a modular AI automation pipeline, we needed to establish how the underlying profile and job history would be structured.",
+          "drivers": [
+            "Modularity: The ability for AI and system tools to surgically update sections without rewriting the entire document or multiple related documents.",
+            "Version Control: Storing data in a flat, predictable, and trackable syntax suitable for Git or database history tracking.",
+            "Scalability: Ensuring the data model can scale to support multiple profiles, job histories, complex relationships, and dynamic output formats (e.g., Markdown, LaTeX, JSON)."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Normalized JSON Schema with Flat Arrays",
+          "justification": "A fully structured JSON schema segregates resume sections into isolated, unique-ID-driven objects. Moving away from manual sequential keys (e.g., custom indexed objects) to industry-standard flat string arrays for lists (like skills) avoids redundant data tracking, simplifies sorting logic, and reduces LLM token overhead during transformation steps.",
+          "implications": [
+            "Simplifies downstream AI processing, as parser validation can easily target specific JSON nodes.",
+            "Requires validation logic on the API layer to enforce the standard schema ($schema compliance).",
+            "Eliminated the overhead of custom key re-indexing code when mutating list items."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Flat document string storage",
+            "verdict": "Rejected",
+            "reasoning": "While simple, treating the resume as a single block of un-tokenized text or markdown prevents surgical updates, causes massive token bloat, and is highly prone to format drift during AI generations."
+          },
+          {
+            "option": "Numeric Key-Mapped Skill Objects",
+            "verdict": "Rejected",
+            "reasoning": "Mapping skills to sequential string keys (e.g., '1': 'Enterprise Architecture') introduced redundant data structures and added complexity, as deleting or re-ordering elements would force manual index calculations."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-002",
+        "title": "Consolidation of Accomplishments into Job History Schema",
+        "status": "Approved",
+        "created_date": "2026-07-15",
+        "approval_date": "2026-07-15",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "context": {
+          "problem_statement": "Accomplishments were originally isolated in a standalone 'locked-accomplishments.json' file. However, accomplishments are inherently tied to specific roles, companies, and professional time periods. Functioning similarly to job-specific skills. Keeping them decoupled created data fragmentation and structural parsing overhead.",
+          "drivers": [
+            "Cohesion: Grouping accomplishments directly as attributes of the relevant career milestone/role.",
+            "Data Efficiency: Streamlining the AI workflow by passing a single consolidated file ('locked-job-history.json') instead of orchestrating multiple file reads.",
+            "Logical Integrity: Ensuring that when a career entry is manipulated, its achievements and key impacts automatically remain bound to it."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Job History Bound Schema Integration",
+          "justification": "Embedding accomplishments directly as a nested array attribute (such as 'accomplishments' or 'bullet_points') within the specific job object of 'locked-job-history.json' structurally mirrors the real-world relationship between a role and its corresponding impact metrics. This simplifies data transformation logic and makes schema validation highly intuitive.",
+          "implications": [
+            "Simplifies downstream resume-rendering tasks (e.g., converting to LaTeX, PDF, or Markdown) as the template generator only needs to loop over a single role array.",
+            "Reduces token overhead and state orchestration complexity for AI agentic workflows.",
+            "Deprecates 'locked-accomplishments.json' entirely, streamlining the system directory structure."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Standalone Accomplishments File mapped via Foreign Keys",
+            "verdict": "Rejected",
+            "reasoning": "While normalized in a database sense, using foreign keys (e.g., 'exp_001') to link standalone accomplishments in a separate file forces the AI engine to perform programmatic joins across JSON documents. This adds fragile data layers and increases parsing failure rates."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-003",
+        "title": "Establishment of Sandboxed AI Workspaces via Epics",
+        "status": "Approved",
+        "created_date": "2026-07-15",
+        "approval_date": "2026-07-15",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "context": {
+          "problem_statement": "Unrestricted AI agent file access introduces a significant risk of accidental file corruption, structural layout overwrites, and chaotic workspace pollution. To prevent this, the AI must have strict structural guardrails regulating where it is allowed to write or modify files, mapped to highly structured logical groupings of work.",
+          "drivers": [
+            "Logical Organization: Organizing output assets cleanly by target companies and job description use cases to prevent document clutter.",
+            "Workflow Isolation (Epics Concept): Mirroring project management standards (like Jira Epics) where a high-level target objective (the Epic) houses individual technical iterations (the tasks/files).",
+            "Write-Access Security Guardrail: Imposing strict directory limitations on the AI, making core configuration files immutable while allowing complete autonomy inside dedicated execution paths."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Singular Target Directory Path: `.ai/history/epics/{company_name}/{output_files}`",
+          "justification": "Restricting the AI's write authority exclusively to a singular target path structured around `{company_name}` enforces rigorous context boundary management. The concept of 'Epics' perfectly mirrors Agile design by logically grouping distinct resume iterations, LinkedIn message assets, and tailored cover letters under the parent company namespace. All root-level files outside of this folder are programmatically rendered read-only (immutable) to the AI agent during execution.",
+          "implications": [
+            "Significantly reduces file-system pollution by guaranteeing a predictable, nested structure.",
+            "Enforces an architectural security model where the AI is physically sandboxed out of master JSON stores.",
+            "Enables easy cleanup, auditing, and diff tracking per application target directly through version control."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Flat global directory output",
+            "verdict": "Rejected",
+            "reasoning": "Storing all adapted resumes and cover letters in a flat, shared directory leads to fast-moving asset pollution, risk of file name collisions, and massive cognitive load for the user when looking for specific application versions."
+          },
+          {
+            "option": "Decoupled output directories by asset type (e.g., '/resumes', '/messages')",
+            "verdict": "Rejected",
+            "reasoning": "While clean by asset type, this model fractures context. If an architect is applying to a specific target, having their resume in one root folder and their cover letter in another breaks the cohesive 'Epic' context, requiring the AI to search multiple directories to reconstruct a single application state."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-004",
+        "title": "Isolation of Source-of-Truth Workflow Templates",
+        "status": "Approved",
+        "created_date": "2026-07-15",
+        "approval_date": "2026-07-15",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "context": {
+          "problem_statement": "To prevent generation drift, the AI agent requires a consistent, repeatable baseline configuration (templates) to seed its outputs. However, if templates are stored within the active execution sandbox, they run the risk of being overwritten or corrupted by write-authorized AI tasks.",
+          "drivers": [
+            "Consistency: Providing a guaranteed, stable starting point for every new generation run.",
+            "Human Governance: Ensuring baseline structural layouts (LaTeX templates, Cover Letter layouts, JSON profiles) are maintained exclusively by the human user.",
+            "Extensibility: Allowing the system to scale and gain new capabilities (e.g., adding a new format like 'plain-text-resume.txt' or 'cold-email-draft.md') without modifying the backend execution code or directory schemas."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Dedicated Read-Only Templates Directory Outside the Sandbox",
+          "justification": "Storing all source-of-truth templates in a dedicated directory `.ai/templates/`) located strictly outside the sandboxed `.ai/history/epics/` working directory. The AI agent is granted read-only permissions to this folder. To run a workflow, the agent copies a static template file to the target Epic directory and adapts it. Updates to styling, schema, or prompts are handled manually by the human user editing the root templates.",
+          "implications": [
+            "Enforces a clean separation between human configuration (immutable to AI) and AI output (mutable within the sandbox).",
+            "Keeps directories logically organized, as developers/users immediately know where master schemas reside.",
+            "Enables easy scalability; adding a new baseline layout is as simple as adding a file to the template folder, requiring minimal structural pipeline code modifications."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "In-Sandbox Template Seeding",
+            "verdict": "Rejected",
+            "reasoning": "Stashing baseline templates inside active Epic workspace folders increases file overhead and risks the AI modifying the master templates mid-run, ruining reproducibility for future execution runs."
+          },
+          {
+            "option": "Hardcoding Templates in Script Code",
+            "verdict": "Rejected",
+            "reasoning": "Embedding markdown or LaTeX templates directly inside script structures destroys ease-of-use and flexibility. It forces the user to write code just to tweak a margin or add a profile field, restricting future modular expansion."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-005",
+        "title": "Centralization and Immutability of AI Guardrails",
+        "status": "Approved",
+        "created_date": "2026-07-15",
+        "approval_date": "2026-07-15",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "context": {
+          "problem_statement": "AI agents require explicit structural schemas and styling guardrails to prevent output hallucinations, syntax violations, or context drift. If these governing rules are scattered across the workspace, nested inside mutable working directories, or hardcoded into application configurations, they can easily be corrupted by write-authorized AI tasks or lost to environment drift.",
+          "drivers": [
+            "Absolute Immutability: Placing the critical configuration files that rule the AI out of write-reach of the AI itself.",
+            "Model and Environment Agnosticism: Isolating syntax rules and formatting policies in non-proprietary schemas (JSON, Markdown) so they remain fully portable across different LLM integrations or developer setups.",
+            "Organizational Clarity: Maintaining a distinct separation of concerns between operational run histories (Epics), starter layouts (Templates), and governing execution guardrails."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Centralized Read-Only Guardrails Directory: `.ai/guardrails/`",
+          "justification": "All schema blueprints (JSON data structures) and behavioral/formatting policies (such as `locked-formatting-rules.md`) will reside in a dedicated, singular directory: `.ai/guardrails/`. This folder is treated as strictly read-only (immutable) to all AI processes. By anchoring guardrails outside active workspace paths, we eliminate any path to accidental policy modifications while providing a clear, localized folder for human operators to maintain, review, and version-control core constraints.",
+          "implications": [
+            "Prevents local model generation drift by ensuring structural validation layers and Markdown rules are protected from unauthorized rewrites.",
+            "Keeps administrative policies highly structured, visible, and isolated from dynamic workflow artifacts.",
+            "Allows seamless development-environment transitions, since governance files are independent of localized platform logic."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Inlining constraints in master prompt definitions",
+            "verdict": "Rejected",
+            "reasoning": "Hardcoding formatting constraints and JSON data validation structures directly inside prompt definitions leads to massive token bloat, repetitive configurations, and severe maintenance pain across multiple system runs."
+          },
+          {
+            "option": "Placing guardrails inside target Epic working directories",
+            "verdict": "Rejected",
+            "reasoning": "If guardrails are bundled alongside dynamic outputs within active workspace directories, they fall directly within the AI's write sandbox. This raises the risk of self-modification or deletion during agentic write loops."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-006",
+        "title": "Epic Branch Workflow with PR-Gated Merge to Main via GitHub Actions",
+        "status": "Draft",
+        "created_date": "2026-08-03",
+        "approval_date": "2026-08-04",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "context": {
+          "problem_statement": "Resume tailoring work currently produces epic-scoped artifacts under `.ai/history/epics/{company_name}/`, but there is no formal version-control workflow governing when those outputs are promoted to the canonical `main` branch. Without a controlled merge path, finalized resumes, engineering logs, and outreach assets risk being committed directly to `main` without human review, making it difficult to audit AI-generated changes, reject incomplete work, or extend the pipeline with downstream automation that depends on a known-good state.",
+          "drivers": [
+            "Human-in-the-Loop Governance: Require explicit human approval before any epic's generated artifacts become part of the canonical repository history on `main`.",
+            "Epic Isolation: Align Git branching with the existing Epic sandbox model (ADR-003) so each target company/application is developed on a dedicated feature branch until finalized.",
+            "Auditability: Preserve a reviewable PR diff that captures the full set of AI-generated outputs (engineering log, tailored resume, outreach) for a single application target.",
+            "Workflow Control: Gate promotion to `main` on both resume finalization and PR approval, establishing a deliberate release boundary rather than ad-hoc commits.",
+            "Extensibility: Create a merge-event hook on `main` that future GitHub Actions workflows can build on (e.g., notifications, artifact indexing, deployment, or integration triggers)."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "One Feature Branch per Epic (`feature/{company-name}-{position-name}`) with PR-Required Merge to Main via GitHub Actions",
+          "justification": "Each new application Epic begins on a dedicated feature branch named `feature/{company-name}-{position-name}` in kebab-case (e.g., `feature/volkswagen-group-solution-architect`), scoped to `.ai/history/epics/{company_name}/`. The Git branch name and Epic directory name are related but not identical: the Epic sandbox directory retains the human-readable company name per ADR-003 (e.g., `Volkswagen Group/`), while the branch slug applies kebab-case normalization to both the company and position derived from the job description. The user manually creates the feature branch before creating `job-description.md`. All AI tailoring iterations occur on that branch. PR readiness is governed by `.cursor/skills/resume-tailer/SKILL.md`: once the resume tailor workflow completes successfully (Steps 1–5), the agent commits epic artifacts, pushes to `origin`, and opens a pull request targeting `main`. Merge is permitted only after human PR approval. GitHub Actions runs initial validation checks on the PR (required artifact presence and parsed role-header chronology integrity); upon approved merge, `main` receives a clean, auditable snapshot of the completed Epic. Post-merge automation is explicitly deferred for the initial implementation.",
+          "implications": [
+            "Branch-to-directory mapping: Git branch `feature/{company-name}-{position-name}` (kebab-case) maps one-to-one to Epic workspace `.ai/history/epics/{Company Name}/` (human-readable, ADR-003). Example: branch `feature/volkswagen-group-solution-architect` ↔ directory `.ai/history/epics/Volkswagen Group/`. The `{company-name}` slug is the kebab-case form of the Epic folder name; `{position-name}` is the kebab-case form of the target role title extracted from `job-description.md`.",
+            "Branch creation is handled manually by the user before `job-description.md` is created. The resume tailor workflow validates branch alignment at pre-flight; the agent does not create branches.",
+            "PR creation is automated as Step 5 of the resume tailor skill workflow (`.cursor/skills/resume-tailer/SKILL.md`): after Steps 1–4 produce all required artifacts, the agent commits, pushes to `origin`, and opens a pull request targeting `main`. Incomplete Epics never reach `main`.",
+            "Initial GitHub Actions CI checks (v1): (1) verify required Epic output files exist for merge (`engineering-log.md`, `tailored-resume.md`, `tailored-outreach.md`, `job-description.md`), and (2) parse `##` role section headers from `tailored-resume.md` and compare them in order against the corresponding headers in `.ai/templates/resume-master.md` — flagging any added, removed, reordered, or renamed roles (including date segments if present in headers). A failure on this check blocks merge.",
+            "Post-merge automation is out of scope for v1; the merge event hook on `main` is reserved for future ADR-defined extensions.",
+            "Incomplete or in-progress Epic work remains isolated from `main` until explicitly reviewed and approved.",
+            "PR diffs become the authoritative audit record for human review of AI-generated resume tailoring outputs.",
+            "Branch protection on `main` (required reviews, required status checks) becomes a prerequisite configuration in the GitHub repository.",
+            "Developers and AI agents must operate on Epic feature branches during active tailoring; direct writes to `main` for Epic artifacts are disallowed.",
+            "Review notification (v1): GitHub Actions workflow on `pull_request` opened/ready_for_review assigns the repository owner as reviewer, applies a `ready-for-review` label, and relies on native GitHub review-request notifications (email and/or mobile). External channels (Slack, Teams) deferred until needed."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Direct commit of Epic outputs to main",
+            "verdict": "Rejected",
+            "reasoning": "Committing AI-generated resume artifacts directly to `main` bypasses human review, conflates in-progress and finalized work, and provides no structured audit boundary for rejecting or revising incomplete outputs."
+          },
+          {
+            "option": "Epic directories on main with local-only drafts",
+            "verdict": "Rejected",
+            "reasoning": "Keeping all Epic folders on `main` and treating drafts as uncommitted local files fractures version history, loses team-visible progress tracking, and prevents PR-based review of the full artifact set before promotion."
+          },
+          {
+            "option": "Single long-lived integration branch for all Epics",
+            "verdict": "Rejected",
+            "reasoning": "A shared integration branch mixes unrelated application targets, produces noisy diffs, and makes it impossible to approve or reject one Epic independently of another."
+          },
+          {
+            "option": "Manual merge without GitHub Actions or branch protection",
+            "verdict": "Rejected",
+            "reasoning": "Relying solely on informal merge discipline lacks enforceable gates, provides no automated validation hook, and does not establish the CI/CD foundation needed for future pipeline extensions."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-007",
+        "title": "Job Search Discovery Sandbox and Multi-Skill Layout",
+        "status": "Approved",
+        "created_date": "2026-08-06",
+        "approval_date": "2026-08-06",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "context": {
+          "problem_statement": "The repository can tailor resumes for known job descriptions but has no governed discovery path for scanning approved ATS sources, normalizing listings, or reviewing matches without polluting epic sandboxes or violating aggregator TOS via scraping.",
+          "drivers": [
+            "Sandbox Isolation: Keep discovery outputs separate from epic resume-tailor workspaces.",
+            "TOS Safety: Prefer public ATS Job Board APIs over LinkedIn/Indeed scraping.",
+            "Multi-Skill Layout: Orchestrator skill plus per-platform skills and tooling.",
+            "Human Governance: Skills under .cursor/skills remain human-maintained; agents do not mutate them during normal runs."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Platform-scoped sandbox under .ai/history/job-search/<platform>/ with orchestrator skill at .cursor/skills/job-search/SKILL.md",
+          "justification": "Discovery artifacts live under `.ai/history/job-search/<platform>/` with colocated platform skills and Python tooling. PowerShell wraps commands; Python implements fetch/normalize. Public ATS APIs only (Greenhouse Job Board API for POC). Local dashboard is read-only POC; promotion to resume-tailor is deferred.",
+          "implications": [
+            "Extend core-architecture directory map with `.ai/history/job-search/`.",
+            "Do not treat `.ai/history/job-search/` as an epic sandbox; do not auto-trigger resume-tailer.",
+            "Orchestrator skills under `.cursor/skills/` are human-maintained and remain agent-immutable during normal job-search runs.",
+            "Job-search agent write access is limited to `.ai/history/job-search/`."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Store discovery pulls inside epic directories",
+            "verdict": "Rejected",
+            "reasoning": "Epics are application-scoped; discovery is multi-company and would blur ADR-003 isolation."
+          },
+          {
+            "option": "Scrape LinkedIn/Indeed aggregators",
+            "verdict": "Rejected",
+            "reasoning": "Violates TOS and is fragile; public ATS board APIs are the source of truth."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-008",
+        "title": "Standardization of the Job Search Data Model",
+        "status": "Approved",
+        "created_date": "2026-08-06",
+        "approval_date": "2026-08-06",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "context": {
+          "problem_statement": "Incoming job listings from Greenhouse and future platforms must normalize to one structure. Without a locked guardrail schema, platform adapters can drift and documentation can be mistaken for the runtime contract.",
+          "drivers": [
+            "Single Structure: All sources emit the same job object shape.",
+            "Guardrail Immutability: Align with ADR-005 for agent-read-only schemas.",
+            "Docs vs SoT Split: Mirror resume-schema.json vs resume-data-model.json."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Locked JSON Schema at .ai/guardrails/locked-job-search-data-model.json with docs-only companion at .ai/history/architectural-decisions/job-data-model.json",
+          "justification": "`.ai/guardrails/locked-job-search-data-model.json` is the architectural source of truth. All incoming jobs must match it after normalization. `.ai/history/architectural-decisions/job-data-model.json` is human-readable documentation only and must not be used for conformance. If docs and locked schema disagree, locked schema wins.",
+          "implications": [
+            "fetch_jobs.py / normalize.py treat the locked file as the contract for emitted jobs.json.",
+            "Dashboard and future validators consume field names and status enum from the locked file.",
+            "Schema changes update the locked guardrail first, then sync the documentation companion."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Treat architectural-decisions/job-data-model.json as source of truth",
+            "verdict": "Rejected",
+            "reasoning": "Documentation models are not suitable for programmatic validation; guardrails are the established SoT pattern (ADR-001/ADR-005)."
+          },
+          {
+            "option": "Per-platform job schemas",
+            "verdict": "Rejected",
+            "reasoning": "Breaks cross-platform dashboard aggregation and increases adapter drift."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-009",
+        "title": "Centralization of Locked Job Search Criteria",
+        "status": "Approved",
+        "created_date": "2026-08-06",
+        "approval_date": "2026-08-06",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "context": {
+          "problem_statement": "Job discovery filters (titles, locations, exclusions) must be identical across Greenhouse and future platforms. Scattering criteria under per-platform folders or under `.ai/history/job-search/` risks drift, duplicate edits, and accidental agent mutation during pulls.",
+          "drivers": [
+            "Single Source of Truth: One criteria file for all pullers.",
+            "Guardrail Immutability: Human-maintained, agent read-only (ADR-005).",
+            "Platform Separation: Platform folders hold only ATS-specific config such as boards.json."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Locked criteria file at .ai/guardrails/locked-job-search-criteria.json",
+          "justification": "Cross-platform filter criteria live in `.ai/guardrails/locked-job-search-criteria.json`. Every platform puller reads this file for title/location/remote/keyword matching. No per-platform search-criteria.json under `.ai/history/job-search/`.",
+          "implications": [
+            "Preflight fails if locked-job-search-criteria.json is missing.",
+            "Criteria changes are intentional human edits, not agent side effects.",
+            "Core-architecture lists the new locked file alongside locked-profile.json and locked-job-history.json."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Per-platform search-criteria.json under job-search history",
+            "verdict": "Rejected",
+            "reasoning": "Duplicates criteria and allows platforms to diverge silently."
+          },
+          {
+            "option": "Hardcode filters in Python scripts",
+            "verdict": "Rejected",
+            "reasoning": "Forces code changes for routine title/location updates and hides policy from operators."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-010",
+        "title": "Rename Epics Sandbox and Templates into Resume-Tailor / Guardrails Naming",
+        "status": "Approved",
+        "created_date": "2026-08-07",
+        "approval_date": "2026-08-07",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "context": {
+          "problem_statement": "The resume application sandbox lived under `.ai/history/epics/` and the skill folder was named `resume-tailer`, while discovery already uses `.ai/history/job-search/`. Source ingestion templates lived under a separate `.ai/templates/` tree without the `locked-*` naming used elsewhere in guardrails. Divergent names and paths made agent instructions, CI paths, and operator docs harder to keep consistent and obscured the skill-to-sandbox relationship.",
+          "drivers": [
+            "Sandbox Naming Alignment: Align the resume sandbox and skill with the `job-search` convention (`resume-tailor`).",
+            "Guardrail Consolidation: Place source ingestion templates under `.ai/guardrails/` using `locked-*-template` naming.",
+            "Git History Preservation: Perform structural path changes via `git mv` / Git rename detection so blame and `git log --follow` remain continuous for sandbox artifacts, templates, skill, and CI scripts (no recreate-and-delete).",
+            "Historical Integrity: Leave prior ADR bodies, plans, and existing sandbox output path strings unchanged; document former names in core-architecture for operators and agents."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Rename sandbox/skill to resume-tailor; move templates into guardrails as locked-*-template via git mv; update live runtime references",
+          "justification": "Renaming `.ai/history/epics/` to `.ai/history/resume-tailor/` and `.cursor/skills/resume-tailer/` to `.cursor/skills/resume-tailor/` aligns agent sandbox naming with job-search. Consolidating `.ai/templates/*` into `.ai/guardrails/locked-*-template.md` (including `locked-resume-master-template.md`) matches the locked guardrail pattern. All structural renames are executed with `git mv` so Git history remains continuous. Live skills, rules, CI scripts, workflows, and README are updated to the new paths; historical ADR/plan text is not rewritten. `core-architecture.mdc` records that the sandbox was previously `epics` and templates previously lived under `.ai/templates/`.",
+          "implications": [
+            "Agents and CI use `.ai/history/resume-tailor/` and `.ai/guardrails/locked-resume-master-template.md` going forward.",
+            "CI script names, dist artifact paths, and manifest keys use resume-tailor terminology (`validate_resume_tailor_artifacts.py`, `dist/resume-tailor/`, `resume-tailor-manifest.json`).",
+            "Prior epic/template history remains reachable via `git log --follow` on the new paths.",
+            "Historical ADR-003/004/006 text and older plans may still say epics/templates; core-architecture naming note bridges that gap.",
+            "Nested company/position sandbox layout is deferred to a follow-on decision."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Keep epics as the concept name and only alias paths",
+            "verdict": "Rejected",
+            "reasoning": "Leaves skill/sandbox naming inconsistent with job-search and continues dual vocabulary in live docs and CI."
+          },
+          {
+            "option": "Create new directories, copy content, delete old trees",
+            "verdict": "Rejected",
+            "reasoning": "Breaks or obscures Git blame/history for sandbox artifacts, templates, skill, and CI scripts."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-011",
+        "title": "Nest Resume-Tailor Sandboxes as Company/Position",
+        "status": "Approved",
+        "created_date": "2026-08-07",
+        "approval_date": "2026-08-07",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "amended_by": "ADR-045",
+        "context": {
+          "problem_statement": "Flat `.ai/history/resume-tailor/{company}/` sandboxes cannot hold multiple concurrent applications for the same company. Feature-branch slugs already encode both company and position (`feature/{company}-{position}`), while directories only encoded company, forcing ad-hoc naming and blocking parallel applications.",
+          "drivers": [
+            "Multi-Application Support: Allow more than one open application per company without colliding sandboxes.",
+            "Branch/Path Alignment: Derive `feature/{company}-{position}` solely from the two kebab-case parent folders of `job-description.md`.",
+            "Git History Preservation: Migrate historical applications with `git mv` so renames remain continuous.",
+            "Legacy Isolation: Leave incomplete legacy test trees (e.g. Deloitte/) untouched until a later purge."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Nested kebab-case layout `.ai/history/resume-tailor/{company}/{position}/` with folder-derived branch identity",
+          "justification": "Nesting position under company mirrors the existing branch slug convention and makes sandbox identity path-authoritative. Historical complete applications are migrated via `git mv` to match known feature-branch slugs (e.g. `lts/integration-architect`, `volkswagen-group/solution-architect`). CI manifest and validation resolve sandboxes as two segments after `resume-tailor/` and ignore single-segment legacy dirs. Live skill, rules, and README globs/examples use the nested path; historical ADR-003/006 bodies and old plans are not rewritten.",
+          "implications": [
+            "Agents and operators create sandboxes at `.ai/history/resume-tailor/{company}/{position}/job-description.md`.",
+            "Expected branch is always `feature/{company-folder}-{position-folder}` from folders, never JD free text.",
+            "CI `resume_tailor_dir_from_path` requires company + position segments; Deloitte flat layout is skipped.",
+            "Manifest `company_name` / `role_title` / `branch_slug` / `drive_folder` are filled from folder slugs.",
+            "Prior flat company paths remain reachable via `git log --follow` on nested destinations.",
+            "ADR-045 extends this layout; it does not replace it. Sandboxes remain two kebab-case segments after resume-tailor/. Queue-invoked position folders may include a source_job_id suffix. Manual runs and historical unsuffixed folders (e.g. capital-one/lead-data-engineer) stay valid and are not rewritten. CI still requires company + position segments; suffix is just more characters in the position segment."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Keep flat company directories",
+            "verdict": "Rejected",
+            "reasoning": "Cannot support concurrent applications per company and leaves branch slugs encoding information the directory tree does not."
+          },
+          {
+            "option": "Derive branch identity from JD or engineering-log text",
+            "verdict": "Rejected",
+            "reasoning": "Free-text titles drift from kebab folder/branch conventions (e.g. Sr Solutions Architect vs solution-architect) and break deterministic CI/agent checks."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-012",
+        "title": "Replace remote Boolean with Required work_location_type Enum",
+        "status": "Approved",
+        "created_date": "2026-08-11",
+        "approval_date": "2026-08-11",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-008", "ADR-009"],
+        "context": {
+          "problem_statement": "The job-search discovery model collapsed three work arrangements into a nullable boolean `remote`, so `false` meant onsite-or-hybrid and criteria filtering could not express include_hybrid vs include_onsite independently. Location include lists also mixed geography with arrangement tokens (Remote/Hybrid/On-Site), and scanning description_text for 'remote' produced false positives (e.g. LTS Technical Architect).",
+          "drivers": [
+            "Arrangement Fidelity: Match the three-way intent already present in locked criteria (include_remote/hybrid/onsite).",
+            "Recall-First Filtering: Bare geography must not be forced to onsite when include_onsite is false.",
+            "Extraction Safety: Prefer structured location/office/metadata signals; never scan description_text for arrangement tokens.",
+            "Schema Uniformity: additionalProperties:false requires historical pulls to migrate so validation stays fail-closed without version branching."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Required work_location_type enum (remote|hybrid|onsite|unknown); criteria block renamed; schema 1.1; UTC Z timestamps",
+          "justification": "A single required enum replaces the boolean as the sole arrangement signal. Extraction precedence is allowlisted board metadata, then location.name + offices[].name; bare geography yields unknown. remote bypasses geography; unknown always passes the arrangement gate while include_* toggles apply only to known values. locations.include is reduced to pure geography. Envelope schema_version becomes 1.1; timestamps are UTC with Z. Historical 2026-08-06 and 2026-08-08 pulls are migrated in place.",
+          "implications": [
+            "locked-job-search-data-model.json drops remote and requires work_location_type.",
+            "locked-job-search-criteria.json renames the remote block to work_location_type and bumps to 1.1.0.",
+            "Pull scripts live under .github/scripts/job-search/ with merge-append default and --rebuild overwrite (all rows new, today UTC only).",
+            "validate_jobs.py gates commits with Draft7 + FormatChecker and file-local semantic checks.",
+            "Scheduled workflow job-search-pull.yml commits validated pulls to main via github-actions[bot]."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Keep remote boolean and add a separate work_mode field",
+            "verdict": "Rejected",
+            "reasoning": "Two overlapping arrangement signals create ambiguity and force awkward false=onsite-or-hybrid semantics."
+          },
+          {
+            "option": "Map bare geography to onsite",
+            "verdict": "Rejected",
+            "reasoning": "With include_onsite:false, NJ/NY roles without an explicit remote/hybrid token would be dropped before Phase 1b analysis."
+          },
+          {
+            "option": "Scan description_text for arrangement keywords",
+            "verdict": "Rejected",
+            "reasoning": "Produces false positives when requirements mention remote work experience without the role being remote."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-013",
+        "title": "Scheduled Greenhouse Pull via GitHub Actions Direct-to-Main",
+        "status": "Superseded",
+        "superseded_by": "ADR-040",
+        "created_date": "2026-08-11",
+        "approval_date": "2026-08-11",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-007"],
+        "context": {
+          "problem_statement": "Greenhouse discovery originally ran only from a local Cursor skill / pull-jobs.ps1 entrypoint, so pulls stopped when the workstation was offline. Phase 1 needed a scheduled, non-LLM pull path that validates against the locked data model and persists results without a human PR gate, while leaving resume-tailor PR review (ADR-006) unchanged.",
+          "drivers": [
+            "Offline Continuity: Daily discovery must continue without a local agent session.",
+            "Fail-Closed Persistence: Invalid jobs.json must never land on main.",
+            "Cost Control: Short ubuntu-latest jobs, no sleep retries, GITHUB_TOKEN so data commits do not re-trigger CD Main.",
+            "Layout: GHA automation under .github/; sandbox data under .ai/history/job-search/."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Cron + workflow_dispatch Job Search Pull workflow committing validated merge/rebuild artifacts to main",
+          "justification": "Smoke-confirmed on 2026-08-11: happy-path merge committed greenhouse/src/2026-08-11/jobs.json; rebuild reset that day to status=new leaving prior dates untouched; past-date and non-main dispatch failed before write; overlapping dispatches serialized via concurrency group cancel-in-progress:false; bot commits used github-actions[bot] and did not trigger CD Main. Scripts live at .github/scripts/job-search/ with merge-append default, --rebuild today-only overwrite, and validate_jobs.py gating the commit step.",
+          "implications": [
+            "Primary operator path is gh workflow run job-search-pull.yml on main; pull-jobs.ps1 remains a local wrapper.",
+            "Pull owns new/active statuses only; analysis and handoff remain Phase 1b/2.",
+            "Binary signaling: any board, validation, commit, or non-fast-forward push failure finishes red with no automatic retry.",
+            "Architecture ADR records shipped behavior after smoke; data-model change remains ADR-012."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Commit pulls to a data branch or open a PR per pull (Option B/C)",
+            "verdict": "Rejected for Phase 1",
+            "reasoning": "Free-tier branch protection cannot enforce required PRs; Option A with GITHUB_TOKEN is viable and avoids per-day PR noise."
+          },
+          {
+            "option": "Keep discovery only in the local Cursor job-search skill",
+            "verdict": "Rejected",
+            "reasoning": "Does not meet offline continuity; LLM session cost is wasted on non-LLM HTTP pulls."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-015",
+        "title": "Locked Word Resume Template Guardrail",
+        "status": "Approved",
+        "created_date": "2026-08-14",
+        "approval_date": "2026-08-14",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-005", "ADR-010"],
+        "references": ["ADR-006", "ADR-002", "ADR-016", "ADR-017", "ADR-018", "ADR-019", "ADR-020"],
+        "context": {
+          "problem_statement": "CD uploads tailored-resume.md. The user then hand-edits an existing Word file. Contact and education in that Word file are copy-paste identity, not guardrail data. There is no locked layout template that fill_resume.py can fill from objects gathered via resume-data-model.json.",
+          "drivers": [
+            "Layout vs Facts: locked-resume-template.docx is layout only. Identity, education, skills, job headers, and professional summary come from locked section files. Per-job bullets and skill ranking still come from tailored-resume.md.",
+            "Join-Contract Fill: Filler gathers objects listed in resume-data-model.json, validates FKs, then writes placeholders. It does not read locked-job-search-criteria.json.",
+            "CD Artifact: CD uploads the sandbox application .docx rather than only markdown.",
+            "Do Not Edit core-architecture.mdc: Directory-structure rules stay human-maintained and agent-immutable."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "locked-resume-template.docx is layout only; fill_resume.py gathers join-contract objects, validates FKs, writes placeholders; CD uploads the sandbox .docx",
+          "justification": "A locked Word layout plus ID-joined section files replaces hand-edited identity in the application document. Placeholders bind to data-model fields. Resume-Now metadata is stripped. Enforcing formatting-rules.mdc against the locked .docx is a future extension.",
+          "implications": [
+            "Normal resume-tailor runs never write .ai/guardrails/.",
+            "CI requires the sandbox .docx with no leftover {{ placeholders.",
+            "CD stages and uploads the sandbox application .docx.",
+            ".cursor/rules/core-architecture.mdc is not edited by this decision."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Continue deploying tailored-resume.md only and hand-edit Word",
+            "verdict": "Rejected",
+            "reasoning": "Leaves contact/education as copy-paste identity and keeps CD off the application document."
+          },
+          {
+            "option": "Convert markdown to PDF/HTML in this build",
+            "verdict": "Rejected",
+            "reasoning": "PDF conversion is out of scope. The application artifact is .docx."
+          },
+          {
+            "option": "Have fill_resume.py read locked-job-search-criteria.json for target_focus/summary",
+            "verdict": "Rejected",
+            "reasoning": "Those fields belong on locked-professional-summary.json (ADR-019). Criteria stay puller filters."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-016",
+        "title": "Locked Contact Guardrail",
+        "status": "Approved",
+        "created_date": "2026-08-14",
+        "approval_date": "2026-08-14",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-001", "ADR-005"],
+        "references": ["ADR-015", "ADR-017", "ADR-018", "ADR-019", "ADR-020"],
+        "context": {
+          "problem_statement": "Contact and education in the hand-edited Word resume are copy-paste identity, not guardrail data. resume-schema.json nested contact inside a composed resume instance and was unused at runtime. fill_resume.py needs a parent identity object that holds foreign keys to each resume section without embedding those children.",
+          "drivers": [
+            "One Section, One Locked File: Contact identity lives in its own guardrail matching the resume-data-model.json contact object.",
+            "Parent Holds FKs: education_id, skills_id, job_history_id, and professional_summary_id resolve to child ids; children are not nested in contact.",
+            "Guardrail Immutability: Align with ADR-005; agents read locked-contact.json and do not write it during a normal resume-tailor run."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "locked-contact.json instance of the data-model contact object (identity plus four child FKs, no nested children)",
+          "justification": "A standalone contact guardrail is the parent of education, skills, job history, and professional summary. Sample payload is John / Doe / john.doe@example.com / 555-555-5555 / New York / NY / 10001 / US. links may be []. All FKs must resolve. resume-data-model.json documents the join contract; resume-schema.json is deleted.",
+          "implications": [
+            "fill_resume.py loads locked-contact.json and aborts if any of education_id, skills_id, job_history_id, or professional_summary_id do not match the child id.",
+            "Word header identity ({{CONTACT_*}}) comes from this file, not from the layout sample .docx.",
+            "CI syntax-checks locked-contact.json. Historical ADR-008 text that mentions resume-schema.json is not rewritten."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Embed education, skills, job history, and professional summary inside contact",
+            "verdict": "Rejected",
+            "reasoning": "Collapses independent section files and forces fill_resume.py to parse nested blobs instead of ID joins."
+          },
+          {
+            "option": "Hardcode contact in locked-resume-template.docx",
+            "verdict": "Rejected",
+            "reasoning": "Leaves identity as layout rather than guardrail data and cannot validate FKs."
+          },
+          {
+            "option": "Keep resume-schema.json as the contact contract",
+            "verdict": "Rejected",
+            "reasoning": "The schema was unused at runtime (CI JSON-parse only) and modeled a nested John Doe instance, not the join contract."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-017",
+        "title": "Locked Education Guardrail",
+        "status": "Approved",
+        "created_date": "2026-08-14",
+        "approval_date": "2026-08-14",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-001", "ADR-005"],
+        "references": ["ADR-016", "ADR-015"],
+        "context": {
+          "problem_statement": "Education on the application Word resume is copy-paste identity, not a locked section object. Nesting education on contact or baking it into the .docx would hide the join from fill_resume.py. Phase 1b reserved qualifications.education on the former profile file (ADR-014, not written); this build uses a standalone education object instead.",
+          "drivers": [
+            "Standalone Section Object: Education matches the resume-data-model.json education object and lives in its own locked file.",
+            "Join via Parent FK: Related only through contact.education_id; education does not carry contact_id.",
+            "Does Not Implement Phase 1b: Does not extend ADR-014. Does not reuse qualifications.education."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Standalone locked-education.json matching the data-model education object, related only through contact.education_id",
+          "justification": "One section, one locked file. Sample instance is University of Technology / New York, NY / B.S. Computer Science / 5/2015. fill_resume.py resolves contact.education_id to education.id and writes {{EDU_*}} placeholders from this file.",
+          "implications": [
+            "CI syntax-checks locked-education.json.",
+            "Word education lines come from this file, not from the layout sample .docx.",
+            "Phase 1b / ADR-014 / qualifications remain out of scope."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Nest education on contact",
+            "verdict": "Rejected",
+            "reasoning": "Breaks the one-section-one-file join contract and embeds a child blob in the parent."
+          },
+          {
+            "option": "Bake education into locked-resume-template.docx",
+            "verdict": "Rejected",
+            "reasoning": "Leaves education as layout rather than guardrail data."
+          },
+          {
+            "option": "Reuse Phase 1b qualifications.education on the profile/skills file",
+            "verdict": "Rejected",
+            "reasoning": "ADR-014 is reserved and not written. This build does not implement qualifications."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-018",
+        "title": "Rename Profile to Locked Skills",
+        "status": "Approved",
+        "created_date": "2026-08-14",
+        "approval_date": "2026-08-14",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-001", "ADR-005", "ADR-010"],
+        "references": ["ADR-016", "ADR-019"],
+        "context": {
+          "problem_statement": "locked-profile.json is named as a catch-all profile but is consumed as a skill vocabulary. It has no join key to contact. target_focus and summary on the same file are a distinct resume section, not skills.",
+          "drivers": [
+            "Accurate Naming: The file is a skill vocabulary (selected_skills / all_skills), not a profile.",
+            "Git History Preservation: Structural rename via git mv so blame and git log --follow remain continuous (ADR-010 pattern).",
+            "Parent Holds the FK: contact.skills_id joins to skills.id. Skills does not carry contact_id.",
+            "Flatten Wrapper: Drop the shipped numeric \"1\" wrapper so the object matches the resume-data-model.json skills section."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "git mv .ai/guardrails/locked-profile.json to .ai/guardrails/locked-skills.json; flatten wrapper; keep selected_skills/all_skills; contact.skills_id -> skills.id",
+          "justification": "Renaming to locked-skills.json matches how resume-tailor actually consumes the file. Flattening the \"1\" wrapper and adding id skl_001 makes the object joinable. target_focus and summary leave this file under ADR-019. Live consumers are updated; historical ADR/plan/sandbox text is not rewritten.",
+          "implications": [
+            "Live skill, CI, and README path references to locked-profile.json are updated to locked-skills.json.",
+            "selected_skills and all_skills lists are unchanged.",
+            "fill_resume.py reads locked-skills.json for {{SKILL_NN}}; it does not read a profile file.",
+            "Historical ADR/plan/sandbox text that still says locked-profile.json stays as-is."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Keep the profile name",
+            "verdict": "Rejected",
+            "reasoning": "The name implies a catch-all identity/summary object and continues to mislead operators and agents."
+          },
+          {
+            "option": "Nest skills inside contact",
+            "verdict": "Rejected",
+            "reasoning": "Breaks one-section-one-file and the contact-as-parent FK pattern."
+          },
+          {
+            "option": "Copy instead of git mv",
+            "verdict": "Rejected",
+            "reasoning": "Breaks or obscures Git blame/history for the skill vocabulary (ADR-010)."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-019",
+        "title": "Locked Professional Summary Guardrail",
+        "status": "Approved",
+        "created_date": "2026-08-14",
+        "approval_date": "2026-08-14",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-001", "ADR-005"],
+        "references": ["ADR-016"],
+        "context": {
+          "problem_statement": "target_focus and summary lived on locked-profile.json (now locked-skills.json). They are a distinct resume section, not a skill vocabulary and not job-search filter criteria. Putting them on locked-job-search-criteria.json would force fill_resume.py to read a puller-filter file.",
+          "drivers": [
+            "Section Isolation: Professional summary is its own locked object matching resume-data-model.json.",
+            "Exact String Copy: target_focus and summary are copied exactly from the former profile file; no rewrite.",
+            "Fill Isolation: fill_resume.py reads this file for {{SUMMARY}} / {{TARGET_FOCUS}}. It does not read locked-job-search-criteria.json.",
+            "Does Not Extend ADR-009: Job-search criteria stay titles/locations/arrangement/keywords."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "New .ai/guardrails/locked-professional-summary.json matching the professional_summary object; contact.professional_summary_id -> professional_summary.id",
+          "justification": "A dedicated guardrail keeps positioning headline and summary off the skills file and off job-search criteria. Child of contact via professional_summary_id. Exact current strings from the former locked-profile.json.",
+          "implications": [
+            "CI syntax-checks locked-professional-summary.json.",
+            "Resume-tailor preflight requires this file. Job-search criteria and fetch_jobs.py are unchanged.",
+            "The job-search agent is out of this ADR; it may later read this guardrail like any other."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Leave target_focus and summary on locked-skills.json",
+            "verdict": "Rejected",
+            "reasoning": "Keeps a distinct resume section mixed into the skill vocabulary."
+          },
+          {
+            "option": "Put target_focus and summary on locked-job-search-criteria.json",
+            "verdict": "Rejected",
+            "reasoning": "Would force fill_resume.py to read a puller-filter file and mix resume copy with discovery filters."
+          },
+          {
+            "option": "Embed summary fields in contact",
+            "verdict": "Rejected",
+            "reasoning": "Breaks one-section-one-file; contact holds FKs only."
+          },
+          {
+            "option": "Duplicate the fields across resume and job-search files",
+            "verdict": "Rejected",
+            "reasoning": "Creates drift between two sources of the same strings."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-020",
+        "title": "Job History Is a Child of Contact",
+        "status": "Approved",
+        "created_date": "2026-08-14",
+        "approval_date": "2026-08-14",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-001", "ADR-002", "ADR-005"],
+        "references": ["ADR-016"],
+        "context": {
+          "problem_statement": "locked-job-history.json had no identity key and no relationship to contact. The former docs model treated job_history as a nested sibling of contact. fill_resume.py cannot validate a join without an envelope id.",
+          "drivers": [
+            "Join Contract: contact.job_history_id joins to job_history.id.",
+            "Preserve Role Keys: Digit-only keys \"1\"...\"12\" remain roles; ignore id when iterating positions.",
+            "Do Not Array-Convert: Numeric role keys stay an object map, not a JSON array."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Add envelope id to locked-job-history.json; add job_history_id on contact; document the join in resume-data-model.json; preserve numeric role keys",
+          "justification": "An envelope id (jh_001) as a sibling of \"1\"...\"12\" makes job history a child of contact without rewriting role payloads. fill_resume.py aborts if contact.job_history_id does not match job_history.id.",
+          "implications": [
+            "Role keys and payloads are unchanged.",
+            "Iterators skip the id key and treat digit-only keys as roles.",
+            "Fact conflicts still prefer locked-resume-master-template.md and locked-job-history.json over the layout sample .docx."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Nest jobs inside contact",
+            "verdict": "Rejected",
+            "reasoning": "Breaks one-section-one-file and would duplicate the large role map into contact."
+          },
+          {
+            "option": "Put contact_id on every role",
+            "verdict": "Rejected",
+            "reasoning": "Repeats the parent FK twelve times and still leaves the file without an envelope identity."
+          },
+          {
+            "option": "Convert \"1\"...\"12\" into a JSON array",
+            "verdict": "Rejected",
+            "reasoning": "Would rewrite the locked chronology shape consumed by resume-tailor and CI."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-021",
+        "title": "Convention-Based Word Placeholder Binding",
+        "status": "Approved",
+        "created_date": "2026-08-17",
+        "approval_date": "2026-08-17",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-015", "ADR-016", "ADR-017", "ADR-018", "ADR-019", "ADR-020"],
+        "references": ["ADR-005"],
+        "context": {
+          "problem_statement": "fill_resume.py hardcoded a per-field map of Word tokens ({{CONTACT_FIRST_NAME}}, {{EDU_*}}, {{SUMMARY}}, {{ROLE_N_*}}, {{SKILL_NN}}). Adding or renaming a placeholder in locked-resume-template.docx required a Python change.",
+          "drivers": [
+            "Template Independence: The locked .docx can gain tokens such as {{CONTACT_COUNTRY}} or {{JOB_HISTORY_6_TITLE}} with no filler edit.",
+            "Object-Field Names: Token bodies follow join-contract keys: {{OBJECT_FIELD}}, {{OBJECT_INDEX_FIELD}}, {{OBJECT_ARRAYFIELD_INDEX_FIELD}} (1-based).",
+            "Overlay Isolation: {{SKILL_NN}} and {{JOB_HISTORY_N_BN}} come from sandbox tailored-resume.md, not locked-skills.json or role accomplishments.",
+            "No Aliases: {{ROLE_*}}, {{EDU_*}}, {{SUMMARY}}, and {{CONTACT_LINK_URL}} are unknown tokens and abort."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "fill_resume.py discovers {{TOKENS}} in the template and resolves them by naming convention against join-contract objects; overlay tokens bind to tailored-resume.md; unknown object/field aborts; missing optional slots fill as empty string",
+          "justification": "A longest-object-prefix walk against resume-data-model.json section keys removes the hardcoded field map. JOB_HISTORY_5 is locked key \"5\". CONTACT_LINKS_1_URL is contact.links[0].url. Tailored bullets join by matching the ## title to job_history[key].title. derive_template.py emits the same names. The user renames tokens in locked-resume-template.docx; normal fills never write .ai/guardrails/.",
+          "implications": [
+            "fill_resume.py deletes build_mapping() and first_contact_link_url().",
+            "Adding a scalar or indexed token to the locked .docx requires no Python change when the path exists on a loaded object.",
+            "Unknown tokens abort. Missing optional slots (no links[1], no SKILL_40, no tailored section for a referenced job_history key) become \"\" and empty paragraphs are removed.",
+            "When tailored-resume.md has no ## title matching job_history[key].title, that key's locked header fields are also left empty.",
+            "Historical ADR-015–020 text that still shows old token names is not rewritten."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Keep a hardcoded placeholder map in fill_resume.py",
+            "verdict": "Rejected",
+            "reasoning": "Every template edit would require a matching Python change."
+          },
+          {
+            "option": "Bind JOB_HISTORY_5 to the fifth tailored ## block",
+            "verdict": "Rejected",
+            "reasoning": "The index is the locked digit key \"5\", not display order."
+          },
+          {
+            "option": "Keep old-name aliases (ROLE_, EDU_, SUMMARY, CONTACT_LINK_URL)",
+            "verdict": "Rejected",
+            "reasoning": "Aliases freeze the old map and hide template drift."
+          },
+          {
+            "option": "Agent rewrites locked-resume-template.docx",
+            "verdict": "Rejected",
+            "reasoning": ".ai/guardrails/ stays user-owned for this cutover; derive_template.py only emits new names if the user runs it."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-022",
+        "title": "CI Close-Missing Jobs on Nearest Prior Pull File",
+        "status": "Approved",
+        "created_date": "2026-08-19",
+        "approval_date": "2026-08-19",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-012", "ADR-013"],
+        "references": ["ADR-008"],
+        "amended_by": "ADR-046",
+        "context": {
+          "problem_statement": "Scheduled Greenhouse pull only wrote status new or active. Listings that dropped off a board vanished from the new dated jobs.json and older dated files were never updated, so closed was unused. Phase 1b analysis must not invent closed locally.",
+          "drivers": [
+            "CI Ownership: Closing missing ids is a pull/CI concern, not a local analysis-agent task.",
+            "Prior Snapshot: Today's file stays live listings only; closed rows are stamped on the nearest prior dated jobs.json.",
+            "Gap Days: Lookback is the existing 30-day nearest prior file, not calendar yesterday.",
+            "Fail-Closed: Both today's file and the patched prior file validate before commit."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "After writing today's jobs.json, mark status=closed on nearest-prior rows whose id is absent from today; already-closed is a no-op",
+          "justification": "Reuse prior_job_ids' nearest prior file. Ids still present today are unchanged. Already closed rows are not rewritten. Same-day merge stays append-only. Rebuild still overwrites today as all new, then runs the same close-missing step. This supersedes ADR-013's implication that pull owns new/active only.",
+          "implications": [
+            "fetch_jobs.py patches the nearest prior jobs.json and prints SUMMARY closed= and prior=.",
+            "job-search-pull.yml commits the prior date folder when it changed and validates both files.",
+            "locked-job-search-data-model.json is unchanged (closed already in the enum).",
+            "A job closed on day N-1 and absent on day N looks like new if it returns on day N+1 (nearest prior is day N). Phase 1b G5 may later restore approved/rejected/completed on reappearance.",
+            "Analysis agents must not invent closed."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Copy closed rows into today's jobs.json",
+            "verdict": "Rejected",
+            "reasoning": "Today's file would mix live listings with closed history and would create analysis stubs for closed ids."
+          },
+          {
+            "option": "Let the analysis agent invent closed",
+            "verdict": "Rejected",
+            "reasoning": "Closing is a pull/CI fact about board presence, not a qualification decision."
+          },
+          {
+            "option": "Close against calendar yesterday only",
+            "verdict": "Rejected",
+            "reasoning": "Scheduled pulls may skip days; shipped lookback already uses the nearest prior file within 30 days."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-023",
+        "title": "Pull-Time Per-Job Analysis Sidecar Stubs",
+        "status": "Approved",
+        "created_date": "2026-08-29",
+        "approval_date": "2026-08-29",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-008", "ADR-012", "ADR-022"],
+        "references": ["ADR-014"],
+        "context": {
+          "problem_statement": "Qualification analysis cannot live in a dated batch sidecar. Identity, revision history, and parallel agents require one analysis file per job, created when the daily jobs.json is committed, not when an agent first analyzes.",
+          "drivers": [
+            "Windows-safe filenames: encode JOB.id by replacing : with -; suffix -analysis.json.",
+            "Stub identity: analysis_id 0 / revision 0 is a real unfilled row; first fill mutates in place to 1 / 1.",
+            "Create-if-not-exists on daily merge; --rebuild today deletes and recreates matching analysis files and drops matching approved-jobs.json rows.",
+            "One locked job-search schema: extend locked-job-search-data-model.json with ANALYSIS_FILE. No locked-analysis-schema.json."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "write_analysis_stubs.py after fetch_jobs.py creates missing greenhouse/analyses stubs and a missing approved-jobs.json envelope; validators select $defs by path",
+          "justification": "Pull remains jobs-only in fetch_jobs.py. Stubs are schema-valid unfilled ANALYSIS_FILE documents. Analysis later fills the same file. ADR-014 is cancelled and must not be reused for this decision.",
+          "implications": [
+            "jobs.json status enum is new|active|closed only. Qualification approved|rejected is sidecar decision.",
+            "approved-jobs.json rows require analysis_id as an FK when present. Pull never inserts rows.",
+            "CI validates changed analyses/*-analysis.json files as stub-shaped ANALYSIS_FILE documents.",
+            "Phase 1b analysis ADRs use numbers after 023."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Dated src/{YYYY-MM-DD}/job-analysis.json written by the analysis agent",
+            "verdict": "Rejected",
+            "reasoning": "Batch files collide under parallel agents and lose per-job history across pull dates."
+          },
+          {
+            "option": "Reuse ADR-014 for pull-time stubs",
+            "verdict": "Rejected",
+            "reasoning": "ADR-014 is cancelled. Candidate-evidence SoT is locked-job-data-model.json, a different decision."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-014",
+        "title": "Profile Qualifications Blob (Cancelled)",
+        "status": "Cancelled",
+        "created_date": "2026-08-18",
+        "approval_date": "2026-08-18",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "context": {
+          "problem_statement": "Phase 1b originally reserved a profile-level qualifications blob and a profile-data-model.json companion. That grain conflicted with contact-parent ERD instances already used by resume fill.",
+          "drivers": [
+            "Single analysis SoT: locked-job-data-model.json is the ERD schema.",
+            "No locked-profile.json recreation (ADR-018 renamed the former profile file to locked-skills.json).",
+            "Placeholder only: this number stays cancelled and is not reused."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Cancel ADR-014. Do not write profile-data-model.json. Candidate evidence lives on locked-job-data-model.json plus locked instance files.",
+          "justification": "Contact remains the parent object. Certifications, clearance, and licenses are related instance files with FKs on contact. A profile blob would duplicate that grain.",
+          "implications": [
+            "ADR-016 education and later resume ADRs are not extended by this cancelled decision.",
+            "Live candidate-evidence ADR is ADR-024.",
+            "Do not reuse 014 for pull-time stubs (ADR-023) or analysis fill (ADR-025)."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Implement the 2026-08-13 qualifications blob on locked-profile.json",
+            "verdict": "Rejected",
+            "reasoning": "The profile file was renamed; qualifications are derived at analysis time from the ERD."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-024",
+        "title": "Candidate Evidence ERD as locked-job-data-model.json",
+        "status": "Approved",
+        "created_date": "2026-08-29",
+        "approval_date": "2026-08-29",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-005", "ADR-016"],
+        "references": ["ADR-014", "ADR-018", "ADR-023"],
+        "context": {
+          "problem_statement": "Qualification analysis needs a locked candidate evidence set (identity, education, skills, history, certifications, licenses, clearance, work authorization, mobility) without inventing a second profile schema or per-file schemas for credential children.",
+          "drivers": [
+            "Single analysis JSON Schema: locked-job-data-model.json covers the ERD.",
+            "Instance files under .ai/guardrails/ stay the live values.",
+            "Missing field means not held; expired dated credentials are not currently held.",
+            "Requirement option A: prose evidence + note, no structured ERD pointers in sidecars."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "locked-job-data-model.json is the analysis ERD schema. New instance files locked-certifications.json, locked-clearance.json, and locked-licenses.json. Contact work_authorization and mobility are string arrays with FKs certifications_id, clearance_id, licenses_id.",
+          "justification": "Keeps contact as parent, reuses shipped education/skills/history/summary, and avoids a cancelled profile blob. Analysis reads these files; resume fill does not require the new FKs until a later education-envelope change.",
+          "implications": [
+            "G2 values: US Citizen + W-2; NY Metro Area, willing to relocate, < 25% travel; AWS Certified Solutions Architect 6/2022-6/2025; licenses and clearance envelopes with no digit rows.",
+            "Education remains the shipped B.S. singleton. High school stays dropped.",
+            "No contact_id on children until Phase 2 multi-contact."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Per-file JSON Schemas for certifications, clearance, and licenses",
+            "verdict": "Rejected",
+            "reasoning": "G3 locked a single analysis schema. Sidecar, queue, and policy stay separate."
+          },
+          {
+            "option": "Revive ADR-014 / locked-profile.json",
+            "verdict": "Rejected",
+            "reasoning": "ADR-014 is cancelled. Skills already occupy the former profile path."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-025",
+        "title": "Analysis Fill, Queue Files, and Joined Pipeline Status",
+        "status": "Approved",
+        "created_date": "2026-08-29",
+        "approval_date": "2026-08-29",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-008", "ADR-012", "ADR-023"],
+        "references": ["ADR-024", "ADR-026"],
+        "context": {
+          "problem_statement": "Pull-time stubs (ADR-023) are unfilled. Analysis must fill per-job sidecars, mint batch identity on queue files, and keep jobs.json presence-only. Dashboard overall status is a join, not a jobs.json write.",
+          "drivers": [
+            "run_id minted only by generate-analysis-queue.py (uuid4 hex).",
+            "Queue invoke: fail-closed if queue/ is not empty; one incomplete file per job-analysis skill invoke.",
+            "First fill mutates stub 0/0 to 1/1 in place. From-scratch appends (G6) are a separate path.",
+            "Analysis never writes approved-jobs.json. Orchestrator consume is Phase 2.",
+            "G5 join: queue execution, else sidecar decision, else jobs.json new|active. Hide closed."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Queue files at .ai/history/job-search/queue/{run_id}-analysis-request.json with per-job status pending|analysis_complete. Skill fills sidecars then marks analysis_complete. Validators join sidecar job_id to any dated jobs.json and approved-jobs analysis_id to sidecar analyses[].",
+          "justification": "Separates pull stubs from analysis fill, keeps batch identity on the queue file and filled rows only, and leaves ledger upserts to Phase 2.",
+          "implications": [
+            "Live queue files are gitignored; fixtures live under tests/fixtures/.",
+            "decision_impact is always none. Research sources are contextual only.",
+            "jobs.json validation does not require a sidecar. Sidecar validation does not require jobs.json.status to match decision.",
+            "analysis_runs[] telemetry is Phase 2. Phase 1b stores run_id only."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Analysis upserts approved-jobs.json on approved",
+            "verdict": "Rejected",
+            "reasoning": "G10: analysis skill never writes the ledger in 1b. Orchestrator consume is Phase 2."
+          },
+          {
+            "option": "Mint run_id inside the analysis skill",
+            "verdict": "Rejected",
+            "reasoning": "Generator is the single mint site so every job in a queue file shares one id."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-026",
+        "title": "Sequential Analysis Batches and Execution Cost Policy",
+        "status": "Approved",
+        "created_date": "2026-08-29",
+        "approval_date": "2026-08-29",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-025"],
+        "references": ["ADR-024"],
+        "context": {
+          "problem_statement": "Qualification analysis is token-expensive. Unbounded parallelism and unbounded research would burn cost without a locked policy file.",
+          "drivers": [
+            "Token minimization is the primary 1b driver.",
+            "Fresh agent per batch so durable JSON, not conversation context, carries progress.",
+            "Human-maintained locked-job-analysis-policy.json.",
+            "Phase 2 may add confirmation-gated bounded parallelism; unused knobs stay off disk in 1b."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "locked-job-analysis-policy.json with default_mode sequential, max_jobs_per_agent 10, fresh_agent_per_batch true, and research max_web_searches_per_job / max_web_fetches_per_job unlimited. job-analysis skill processes one queue file per invoke.",
+          "justification": "Ten-job sequential batches bound context. Unlimited research matches resume-tailor parity for first-fill/from-scratch; 0/null skip a tool; omitted/negative halt. Parallel max_parallel_agents and confirmation keys wait for Phase 2.",
+          "implications": [
+            "Phase 1b does not enable parallel analysis agents.",
+            "Phase 2 intent: Yes/No before at most two concurrent analysis agents; workers stay read-only; orchestrator applies edits serially.",
+            "Policy changes are human decisions. The skill never edits the policy file."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Write unused parallel knobs on disk in 1b",
+            "verdict": "Rejected",
+            "reasoning": "G10 I3 overlay: only 1b-used execution keys plus research unlimited. ADR records Phase 2 intent without shipping dead knobs."
+          },
+          {
+            "option": "Nested Task agents drain every queue file in one invoke",
+            "verdict": "Rejected",
+            "reasoning": "One file per invoke. Multi-file drain is the parent orchestrator in Phase 2."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-027",
+        "title": "30-Day Dated Pull Retention Purge (Current Main Tree Only)",
+        "status": "Approved",
+        "created_date": "2026-08-30",
+        "approval_date": "2026-08-30",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-008", "ADR-012"],
+        "references": ["ADR-022", "ADR-026"],
+        "context": {
+          "problem_statement": "Dated src/{YYYY-MM-DD}/ folders grow without bound on main. Pull lookback already uses a single nearest prior file within 30 days. Unbounded dated history is not required for merge status or close-wins once a folder is outside that window.",
+          "drivers": [
+            "Match pull lookback window (N = 30 UTC calendar days).",
+            "Purge current main tree only; do not rewrite git history.",
+            "Keep sidecars, ledger, queue, dashboard, and lookback-window folders."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "After analysis consume, delete .ai/history/job-search/{platform}/src/{YYYY-MM-DD}/ directories whose folder date is strictly older than UTC today minus 30 days. Include those deletions in the post-analysis job-search commit. git rm / tree delete only.",
+          "justification": "Thirty UTC days matches shipped pull lookback. Sidecar identity is job_id, not pull date. Ledger and queue stay durable.",
+          "implications": [
+            "Closed rows that exist only on a purged dated jobs.json leave the live tree.",
+            "Generator/eligibility must tolerate a job last seen only on a purged day.",
+            "Actions stay source-scoped; orchestrator owns retention."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Purge analyses/ or approved-jobs.json with the dated folders",
+            "verdict": "Rejected",
+            "reasoning": "Breaks G4 FKs and the resume-tailor ledger."
+          },
+          {
+            "option": "History rewrite (git filter-repo / force-push)",
+            "verdict": "Rejected",
+            "reasoning": "Violates no-history-rewrite lock."
+          },
+          {
+            "option": "N not equal to 30",
+            "verdict": "Rejected",
+            "reasoning": "Would diverge from shipped pull lookback and risk empty lookback after purge."
+          },
+          {
+            "option": "Purge during GHA pull",
+            "verdict": "Rejected",
+            "reasoning": "Actions stay source-scoped; orchestrator owns retention."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-028",
+        "title": "Queue-Invoked Resume-Tailor May Create Feature Branches",
+        "status": "Approved",
+        "created_date": "2026-08-30",
+        "approval_date": "2026-08-30",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-006", "ADR-011"],
+        "amended_by": "ADR-045",
+        "references": ["ADR-029"],
+        "context": {
+          "problem_statement": "Manual resume-tailor requires the user to create feature/{company}-{position} before job-description.md. Queue-invoked Phase 2 fan-out cannot wait for that manual step, but the PR review/merge gate must stay.",
+          "drivers": [
+            "Orchestrator is scripts + git only and does not create feature branches.",
+            "One feature branch maps to one sandbox path (ADR-011).",
+            "Slugs come from kebab_case(company) and kebab_case(title) on the queue row, not JD free text."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "When invoked from a Phase 2 resume-tailor queue row, the resume-tailor skill may run git checkout -b feature/{company_slug}-{position_slug} from current main. PR review/merge gate unchanged. Orchestrator does not create feature branches.",
+          "justification": "Keeps ADR-006 for manual drop-JD while unblocking queue-mirrored fan-out. Tailor owns the feature-branch commit+push and gh pr create.",
+          "implications": [
+            "Manual resume-tailor runs unchanged: user creates the branch before job-description.md.",
+            "Queue-invoked runs: tailor creates the branch, writes P2-J1 job-description.md, then Steps 1-5.",
+            "Orchestrator does not merge feature branches to main.",
+            "P2-G6s after a merged PR: recreate the feature branch from current main, overwrite the sandbox, open a new PR; the user merges over files already on main.",
+            "ADR-045 supersedes queue-invoked slug derivation only. Mint writes company_slug and position_slug (always-suffix from source_job_id). Tailor honors those fields and does not re-kebab title. Manual drop-JD still uses unsuffixed parent folders (ADR-006 / ADR-011). First-ship queue-invoked identity kebab_case(company)+kebab_case(title) remains true for historical unsuffixed winner PRs."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Orchestrator bypasses the PR gate",
+            "verdict": "Rejected",
+            "reasoning": "Human PR review/merge remains the hard gate."
+          },
+          {
+            "option": "Slug derivation from JD free text",
+            "verdict": "Rejected",
+            "reasoning": "Branch identity is kebab_case listing company and title (ADR-011)."
+          },
+          {
+            "option": "Orchestrator-prepared workspace, sandbox manifest, or split git Step 5 (Options A/B/C)",
+            "verdict": "Rejected",
+            "reasoning": "Handoff is queue-mirrored with tailor-owned feature-branch git."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-029",
+        "title": "Locked Agent Policies File (Rename and Multi-Agent Envelope)",
+        "status": "Approved",
+        "created_date": "2026-08-30",
+        "approval_date": "2026-08-30",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-026"],
+        "references": ["ADR-005", "ADR-024", "ADR-025", "ADR-028"],
+        "context": {
+          "problem_statement": "Phase 2 needs execution policy for more than job-analysis. A single-object locked-job-analysis-policy.json cannot hold per-agent configs without splitting SoT or rewriting ADR-026.",
+          "drivers": [
+            "One human-maintained locked file for all agent execution/cost knobs.",
+            "Preserve git history via git mv.",
+            "Shared execution keys; extra objects per record (research, parallel) as data-model extensions.",
+            "ADR-026 remains the 1b sequential-analysis cost decision; this ADR extends it."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "git mv locked-job-analysis-policy.json to locked-agent-policies.json. Envelope schema_version plus policies[]. Keep job_analysis_policy_001 (execution, research, P2-P1 parallel). Add resume_tailor_policy_001 (execution only). New agents add a policies[] record, not a new locked JSON file. job-orchestrator has no first-ship record.",
+          "justification": "Envelope plus id lookup scales to every agent without forking policy files or mutating ADR-026 history. Identical execution keys keep batch grain comparable. Analysis-only extensions keep tailor fan-out serial.",
+          "implications": [
+            "Consumers look up by policy id, not by filename-as-singleton.",
+            "CI and validate_guardrails_json.py retarget the new path.",
+            "Agents never edit the file."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Second locked JSON for resume-tailor",
+            "verdict": "Rejected",
+            "reasoning": "Splits execution-policy SoT and duplicates envelope/validation."
+          },
+          {
+            "option": "Rewrite ADR-026 selected_option to the new filename",
+            "verdict": "Rejected",
+            "reasoning": "ADRs append; they do not rewrite history."
+          },
+          {
+            "option": "Copy then delete the old file",
+            "verdict": "Rejected",
+            "reasoning": "Execution constraints require move to preserve git history."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-030",
+        "title": "Ban Instance and Locked-File Schema Versioning (Git + ADRs Are History)",
+        "status": "Approved",
+        "created_date": "2026-08-31",
+        "approval_date": "2026-08-31",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-008", "ADR-012", "ADR-023", "ADR-026", "ADR-029"],
+        "references": ["ADR-027"],
+        "context": {
+          "problem_statement": "Instance envelopes and two locked JSON files carried schema_version or version keys that consumers already ignored. Git history and appended ADRs already record shape changes. Keeping those keys implied a compatibility shim and forced writers, validators, and live files to stay in lockstep with unused numbers.",
+          "drivers": [
+            "Drop every versioning key in the current tree: instance schema_version, locked-agent-policies envelope schema_version, per-policy version, criteria version.",
+            "Keep criteria created_on / modified_on. No broader envelope-field audit this pass.",
+            "Ship schema, writers, validators, tests, live main files, and this ADR in one change. additionalProperties: false makes a split ship fail CI.",
+            "No git history rewrite. Fail-closed on leftover versioning keys."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Remove schema_version from job-search instance envelopes and from locked-agent-policies.json. Remove version from each policies[] record and from locked-job-search-criteria.json. Shape changes are recorded by appending ADRs and git history. Validators fail-closed on leftover versioning keys.",
+          "justification": "Policy lookup is by id. The dashboard does not read versioning keys. Git plus ADRs are the history. Leftover keys must fail closed the same way leftover mode and pull_date already do on queues.",
+          "implications": [
+            "PULL_FILE, APPROVED_JOBS, and ANALYSIS_FILE no longer list schema_version; additionalProperties: false rejects the key.",
+            "Analysis-request and tailor-request validators forbid schema_version.",
+            "Writers stop emitting the keys. Live dated jobs.json, analyses, and approved-jobs.json on main are stripped in place.",
+            "Do not rewrite ADR-012, ADR-023, ADR-026, or ADR-029. Shipped 1b and Phase 2 child plans stay historical SoT."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Keep envelope versions as a compatibility shim",
+            "verdict": "Rejected",
+            "reasoning": "Consumers already ignore the keys. A shim preserves unused numbers without a reader."
+          },
+          {
+            "option": "Rewrite older ADRs in place",
+            "verdict": "Rejected",
+            "reasoning": "ADRs append; they do not rewrite history."
+          },
+          {
+            "option": "History rewrite / git filter-repo",
+            "verdict": "Rejected",
+            "reasoning": "Same as ADR-027: strip the current tree only."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-031",
+        "title": "Orchestrator History Sandbox for Run Log",
+        "status": "Approved",
+        "created_date": "2026-08-31",
+        "approval_date": "2026-08-31",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-003"],
+        "references": ["ADR-011"],
+        "context": {
+          "problem_statement": "The job-orchestrator needs a durable last-run log for the local dashboard. Cursor cannot dump IDE chat. Job-search and resume-tailor sandboxes are owned by other agents; putting orch operational files there mixes ownership. Core-architecture forbids new directories outside the locked tree without an explicit ADR.",
+          "drivers": [
+            "Give the orchestrator its own history sandbox, parallel to job-search and resume-tailor.",
+            "Skill dual-write only: whatever the orchestrator would put in chat is also appended to disk. No IDE transcript dump. No nested analysis/tailor chat files.",
+            "Keep P2-D1 dashboard serve root at .ai/history/job-search/ so the URL stays /dashboard/.",
+            "Ship this ADR in the same change as the directory, core-architecture line, gitignore, and dashboard log panel."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "New sandbox .ai/history/orchestrator/ with tracked .gitkeep and gitignored run.log (stable name). Truncate at orchestrator run start (P2-D1 adjacent); persist at run end. UTF-8 append-only lines prefixed with UTC ISO timestamps. Dashboard maps HTTP /orchestrator/run.log onto that file without changing the serve root.",
+          "justification": "A dedicated sandbox keeps orchestrator operational state out of job-search and resume-tailor trees. A stable gitignored run.log is the disk SoT for the dashboard panel. Dual-write from the skill is the only feasible chat capture. Changing the serve root would move the locked P2-D1 dashboard URL.",
+          "implications": [
+            "Agents and operators treat .ai/history/orchestrator/ as the job-orchestrator sandbox. run.log is not committed.",
+            "orch_run_log.py truncates and appends that path. The dashboard poll/Refresh replaces the panel from the full file. Missing file is an empty/muted placeholder.",
+            "serve.py keeps the HTTP root at .ai/history/job-search/ and serves the sibling log at /orchestrator/run.log.",
+            "Do not rewrite ADR-003 or ADR-011. Nested analysis/tailor transcripts and IDE dump stay out of scope."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Store run.log under .ai/history/job-search/dashboard/",
+            "verdict": "Rejected",
+            "reasoning": "Job-search owns that sandbox. Orchestrator operational files would mix agent ownership and directory purpose."
+          },
+          {
+            "option": "Store run.log under .ai/history/resume-tailor/",
+            "verdict": "Rejected",
+            "reasoning": "Resume-tailor sandboxes are per company/position (ADR-011) and must not hold orchestrator run state."
+          },
+          {
+            "option": "Change P2-D1 serve root to .ai/history/ so both trees are children",
+            "verdict": "Rejected",
+            "reasoning": "Would move the dashboard URL off /dashboard/ and reopen the locked serve-root contract."
+          },
+          {
+            "option": "Literal Cursor IDE transcript dump or nested analysis/tailor chat files",
+            "verdict": "Rejected",
+            "reasoning": "Cursor cannot dump IDE chat. Subagent transcripts appear only if the orchestrator copies them into its own chat/log."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-032",
+        "title": "Rebuild Skips Post-Handoff Ledger Rows and Sidecars",
+        "status": "Approved",
+        "created_date": "2026-08-31",
+        "approval_date": "2026-08-31",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-023"],
+        "references": ["ADR-012"],
+        "context": {
+          "problem_statement": "G10 locked --rebuild as pre-handoff only: wipe today's sidecars and matching approved-jobs.json rows. After Phase 2, write_analysis_stubs.py --rebuild still dropped in_progress|failed|completed|deployed rows. A 2026-08-31 GHA rebuild deleted the completed E2E ledger row for greenhouse:lts:4372981009 and stubbed its sidecar. Consume already refuses to mutate POST_HANDOFF_STATUSES.",
+          "drivers": [
+            "Keep G10 wipe for pre-handoff approved rows and jobs with no ledger row.",
+            "Pair sidecar and ledger: skipping only the ledger drop leaves a completed row pointing at a revision-0 stub.",
+            "Do not implement the Option C rebuild-manifest cascade (P2-R1) in this change.",
+            "Do not rewrite ADR-023 or the historical 1b G10 child-plan body."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "On --rebuild, skip sidecar unlink, skip ledger drop, and skip writing a new stub when the matching approved-jobs.json row status is in_progress, failed, completed, or deployed. approved rows and jobs with no ledger row still wipe. jobs.json rebuild still resets presence to new.",
+          "justification": "Post-handoff execution state is durable. Consume already treats those statuses as immutable. Wiping the sidecar without the ledger (or the reverse) desyncs G4 FKs. Full Option C cleanup remains parked as P2-R1.",
+          "implications": [
+            "write_analysis_stubs.py imports POST_HANDOFF_STATUSES from consume_analysis_queue.py.",
+            "A missing sidecar for a post-handoff ledger row stays missing; rebuild does not invent a stub.",
+            "GHA --rebuild remains source-scoped. Orchestrator does not consume rebuild-manifest.json.",
+            "Do not rewrite ADR-023. 1b G10 historical text stays. P2-R1 stays parked."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Skip ledger drop only; still delete+recreate those sidecars",
+            "verdict": "Rejected",
+            "reasoning": "Produces a completed or failed ledger row pointing at a revision-0 stub. The next orch run re-queues the stub; consume still will not retarget the ledger."
+          },
+          {
+            "option": "Also keep approved rows and their sidecars",
+            "verdict": "Rejected",
+            "reasoning": "approved is pre-handoff. G10 wipe of those rows remains the way to force a fresh first-fill after rebuild."
+          },
+          {
+            "option": "Ship the full Option C rebuild-manifest cascade in this change",
+            "verdict": "Rejected",
+            "reasoning": "P2-R1 stays parked. This ADR only stops rebuild from destroying post-handoff state."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-033",
+        "title": "Analysis-Row Telemetry, Queue Invoke, and Orchestrator Run-Log Trailer",
+        "status": "Approved",
+        "created_date": "2026-08-31",
+        "approval_date": "2026-08-31",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-023", "ADR-031"],
+        "references": ["ADR-030", "ADR-032"],
+        "context": {
+          "problem_statement": "Filled analysis sidecars and the orchestrator run.log had no closed place to store token/context usage. Phase 1b parked telemetry as a future analysis_runs[] entity and stored queue run_id only. Ledger session remains a separate parked grill. additionalProperties: false means new sidecar keys must ship with live backfill in the same change.",
+          "drivers": [
+            "Telemetry is keys on the filled analyses[] row, not a new analysis_runs[] entity. Queue run_id copy onto the row is unchanged.",
+            "Queue envelope invoke is manual|batch, not mode (still forbidden). Generator --invoke optional, default batch, independent of --job-id. Orchestrator never passes --invoke.",
+            "Batch/nested analysis writes every usage key as JSON null; context_metric_status is not_programmatically_available. Do not invent tokens or %.",
+            "Orchestrator run.log needs a replaceable trailer using the same closed keys, rewritten each orch turn for this orch session only. Dashboard log widget pins that trailer as a footer. Disk is SoT.",
+            "Ship schema, writers, validators, tests, 17 live sidecars, dashboard, skills, and this ADR in one change."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Required null-ok telemetry keys on every analyses[] row (including stubs): started_at, ended_at, tokens_in, tokens_out, cache_tokens_in, thinking_tokens, context_usage_percent; context_metric_status is not_programmatically_available|observed. Queue envelope required invoke manual|batch. orch_run_log.py --telemetry replaces a delimiter-plus-JSON trailer; --append preserves it. Dashboard Current analysis shows a Run accordion; #log-panel is a 240px column with scrolling #log-viewport and pinned #log-telemetry footer.",
+          "justification": "Row keys avoid a new analysis_runs[] entity and keep queue run_id as the batch join. invoke is not mode. Nested agents cannot observe parent tokens, so batch writes nulls. A trailer on the existing gitignored run.log is the SoT without a second telemetry file. The log footer must not scroll away with chat lines.",
+          "implications": [
+            "locked-job-search-data-model.json $defs/analysis requires the closed keys. additionalProperties: false rejects a split ship.",
+            "generate-analysis-queue.py --invoke default batch. validate_analysis_request requires invoke and still forbids mode.",
+            "write_analysis_stubs.py stub_document emits nulls plus not_programmatically_available. Live sidecars are null-backfilled in this change.",
+            "job-analysis reads envelope invoke only. job-orchestrator never passes --invoke and rewrites the trailer each orch turn. Do not sum nested analysis/tailor usage into the orch trailer.",
+            "Do not rewrite ADR-023, ADR-030, ADR-031, or ADR-032. Ledger session stays parked. Do not rewrite 1b G10 historical analysis_runs[] text."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "New analysis_runs[] entity keyed by ledger run_id",
+            "verdict": "Rejected",
+            "reasoning": "P2-A1 is row telemetry. Queue run_id copy is already the batch join. A new entity would reopen 1b G10 parking without adding a reader."
+          },
+          {
+            "option": "Reuse envelope mode for manual vs batch",
+            "verdict": "Rejected",
+            "reasoning": "mode is forbidden leftover. invoke is a new required enum."
+          },
+          {
+            "option": "Second gitignored telemetry file next to run.log",
+            "verdict": "Rejected",
+            "reasoning": "The trailer on run.log is the disk SoT. A sibling file splits the dashboard poll."
+          },
+          {
+            "option": "Sum nested analysis/tailor token usage into the orch trailer",
+            "verdict": "Rejected",
+            "reasoning": "Nested agents write nulls. The trailer is this orch session only."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-034",
+        "title": "Deploy Tailored Outreach with Resume-Tailor Artifacts",
+        "status": "Approved",
+        "created_date": "2026-09-01",
+        "approval_date": "2026-09-01",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-006"],
+        "references": ["ADR-011"],
+        "context": {
+          "problem_statement": "ADR-006 deploys the tailored resume, application DOCX, and engineering log to each Google Drive role folder while tailored-outreach.md remains repository-only. The outreach message is an operational application asset and must be available beside the deployed resume artifacts.",
+          "drivers": [
+            "Deploy the complete set of candidate-facing application assets to the existing company/role folder.",
+            "Preserve changed-sandbox deployment scope and avoid backfilling unrelated historical sandboxes.",
+            "Use deterministic Drive names so repeated deployments update the existing outreach file.",
+            "Keep job-description.md repository-only because it is source/audit material rather than a candidate-facing artifact."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Stage tailored-outreach.md in dist/resume-tailor, record it as outreach_artifact in resume-tailor-manifest.json, and upsert it to the existing Google Drive company/role folder as tailored-outreach.md.",
+          "justification": "The manifest builder already requires tailored-outreach.md for every changed resume-tailor sandbox, and the Drive synchronizer already handles deterministic per-role upserts. Extending those existing paths adds the artifact without changing workflow orchestration, folder structure, credentials, or deployment triggers.",
+          "implications": [
+            "build_resume_tailor_manifest.py fails when tailored-outreach.md is missing and stages it with the other deploy artifacts.",
+            "sync_gdrive.py uploads tailored-outreach.md beside tailored-resume.md, engineering-log.md, and the application DOCX.",
+            "cd-main.yml requires no structural change because it already transfers the complete dist directory between build and deploy jobs.",
+            "Historical ADR-006 text and deployed plans are not rewritten; this decision supersedes only their repository-only treatment of tailored-outreach.md."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Keep tailored-outreach.md in git only",
+            "verdict": "Rejected",
+            "reasoning": "The outreach message would remain separated from the deployed assets used to execute the application."
+          },
+          {
+            "option": "Deploy every audit artifact, including job-description.md",
+            "verdict": "Rejected",
+            "reasoning": "The job description remains source/audit material and is not required in the candidate-facing Drive folder."
+          },
+          {
+            "option": "Add a separate outreach deployment workflow",
+            "verdict": "Rejected",
+            "reasoning": "A second workflow would duplicate change detection, credentials, folder resolution, and retry behavior already implemented by the resume-tailor deployment."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-035",
+        "title": "Python Baseline and Documentation Ownership Split",
+        "status": "Approved",
+        "created_date": "2026-09-01",
+        "approval_date": "2026-09-01",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-006", "ADR-011", "ADR-021", "ADR-028", "ADR-031", "ADR-032", "ADR-034"],
+        "references": ["ADR-001"],
+        "context": {
+          "problem_statement": "Operator documentation described an earlier pipeline, Python versions were hardcoded in GitHub Actions, and the README directory-map hook drifted from its installer. First-time Windows setup and day-to-day operation needed a single verified baseline and a clear document split.",
+          "drivers": [
+            "Pin one Python version for local .venv and GitHub Actions via .python-version.",
+            "Keep setup.md as clone-to-validation bootstrap, including human locked-identity population.",
+            "Keep README.md as the owner-operator manual for current skills, runbooks, and Mermaid workflows.",
+            "Prevent two pre-commit implementations from drifting.",
+            "If Python 3.14 cannot install or pass runtime validation, fall back by changing only .python-version to 3.12."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Enforce Python via .python-version (3.14 retained after local install and smoke validation), ignore .venv/, point Actions at python-version-file, split setup.md vs README.md, and install hooks by copying the canonical pre-commit.ps1 plus wrapper.",
+          "justification": "A version file removes duplicated 3.12 pins. Verified 3.14 with existing requirement sets plus mcp[cli]==1.29.1, mcp-server-office==0.2.0, and lxml>=6.0.1, so fallback to 3.12 was not required. Setup owns bootstrap and identity fill; README owns operations. The hook installer copies files instead of embedding a second hook body.",
+          "implications": [
+            ".github/workflows/ci.yml, cd-main.yml, and job-search-pull.yml read .python-version.",
+            "If a future 3.14 break occurs, change only .python-version to 3.12, recreate .venv, and rerun the same checks.",
+            "setup.md is the Windows bootstrap and locked-identity fill guide; README.md is the operator manual and does not duplicate setup.",
+            "scripts/set-up-scripts/pre-commit-update-script.ps1 copies canonical hook files into .git/hooks/.",
+            "The README directory map lives in a collapsible appendix and omits .venv, caches, fixtures, sandbox children, and individual test files."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Keep hardcoded python-version: 3.12 in each workflow",
+            "verdict": "Rejected",
+            "reasoning": "Three workflow files would continue to drift from local runtime."
+          },
+          {
+            "option": "Fall back to 3.12 immediately without attempting 3.14",
+            "verdict": "Rejected",
+            "reasoning": "3.14 installed and passed import, MCP list_tools, and lxml/python-docx checks."
+          },
+          {
+            "option": "Keep a second hook body inside the update script",
+            "verdict": "Rejected",
+            "reasoning": "Embedded copies diverge from scripts/set-up-scripts/pre-commit.ps1."
+          },
+          {
+            "option": "Combine setup and operator docs in README.md",
+            "verdict": "Rejected",
+            "reasoning": "Bootstrap, secrets, and identity fill are a different audience than daily orchestrator and tailor runbooks."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-036",
+        "title": "Rename GitHub Repository to job-forge",
+        "status": "Approved",
+        "created_date": "2026-09-01",
+        "approval_date": "2026-09-01",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-035"],
+        "references": [],
+        "context": {
+          "problem_statement": "The repository was created under a product-specific name while the project scope expanded beyond LinkedIn-specific automation. Live clone instructions, Greenhouse User-Agent branding, and test fixtures still referenced the old repository name.",
+          "drivers": [
+            "Rename the GitHub repository to job-forge and retarget local origin.",
+            "Update setup.md clone path and directory name for new operators.",
+            "Rebrand the Greenhouse fetch User-Agent from linkedin-job-search-poc/1.0 to job-forge-job-search/1.0.",
+            "Align job-search test pr_url fixtures with the new repository slug.",
+            "Preserve GitHub redirects from the previous name and avoid rewriting historical ledger or deployed-plan URLs."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Rename the GitHub repository to job-forge, update origin URL, setup.md clone instructions, fetch_jobs.py User-Agent, and job-search test pr_url fixtures; record explicit non-goals for product LinkedIn references, historical shipped URLs, guardrails identity files, and the local workspace folder name.",
+          "justification": "GitHub rename with redirect keeps existing PR and Actions URLs reachable. Only live identity and operator-facing references need updating; LinkedIn-the-product mentions, approved-jobs.json pr_url values, deployed plans, defect records, and locked guardrails remain unchanged because they are not repository branding.",
+          "implications": [
+            "origin points to https://github.com/atroberts06/job_forge.git.",
+            "setup.md clone block uses job_forge for clone URL and Set-Location.",
+            "fetch_jobs.py User-Agent is job-forge-job-search/1.0.",
+            "Job-search test fixtures use example/job-forge pr_url strings.",
+            "Historical approved-jobs.json pr_url, .cursor/plans/deployed/, and .ai/history/defects/ URLs are not rewritten.",
+            "Product LinkedIn references (contact URL, locked-linkedin-profile-template.md, InMail text) are unchanged.",
+            "Local folder rename is performed by the operator after merge; the agent cannot rename the active workspace."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Keep the previous repository name and update documentation only",
+            "verdict": "Rejected",
+            "reasoning": "The repository name would continue to misrepresent project scope for new clones and external integrations."
+          },
+          {
+            "option": "Rewrite all historical pr_url and deployed-plan GitHub links",
+            "verdict": "Rejected",
+            "reasoning": "GitHub redirects preserve old URLs; rewriting shipped ledger and plan history adds churn without operational benefit."
+          },
+          {
+            "option": "Rename local workspace folder automatically",
+            "verdict": "Rejected",
+            "reasoning": "The agent cannot rename the directory it is running in; the operator renames after closing Cursor."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-037",
+        "title": "Dual-OS Bootstrap with Canonical POSIX Hook",
+        "status": "Approved",
+        "created_date": "2026-09-01",
+        "approval_date": "2026-09-01",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-035"],
+        "references": ["ADR-036"],
+        "context": {
+          "problem_statement": "First-time setup and operator docs were Windows/PowerShell only. The Git pre-commit wrapper invoked powershell.exe, which blocks clone-to-validation on macOS.",
+          "drivers": [
+            "Document bash and PowerShell install paths without maintaining two directory-map implementations.",
+            "Keep existing .ps1 launchers for Windows operators.",
+            "Allow Git on macOS and Git for Windows to run the same hook body.",
+            "Avoid calling powershell.exe from the POSIX hook."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Canonical POSIX pre-commit rebuilds the README directory map; pre-commit.ps1 is a thin bash wrapper; setup.md and README.md use dual fences only where commands differ; bash is added to the installed toolkit alongside powershell.",
+          "justification": "ADR-035 rejected a second hook body. One POSIX script plus a thin PowerShell wrapper keeps Windows usable and makes macOS install work. Dual docs cover venv, MCP binary, hook install, and Drive env vars without duplicating portable python/git/gh commands.",
+          "implications": [
+            "scripts/set-up-scripts/pre-commit is the directory-map implementation; install-hooks.sh and pre-commit-update-script.ps1 copy it with pre-commit.ps1 into .git/hooks/.",
+            "setup.md is macOS and Windows bootstrap; README.md remains the operator manual.",
+            "Dashboard start is serve.py via serve-dashboard.sh or serve-dashboard.ps1.",
+            "core-architecture.mdc lists bash and powershell.",
+            "pull-jobs.ps1 is unchanged and is not an authoritative rebuild path."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Keep PowerShell as the hook body and require PowerShell on macOS",
+            "verdict": "Rejected",
+            "reasoning": "The POSIX wrapper already exists; calling powershell.exe is the macOS install break."
+          },
+          {
+            "option": "Maintain full bash and PowerShell copies of the directory-map rebuild",
+            "verdict": "Rejected",
+            "reasoning": "Two hook bodies drift, which ADR-035 already rejected."
+          },
+          {
+            "option": "Replace PowerShell docs and delete .ps1 files",
+            "verdict": "Rejected",
+            "reasoning": "Windows operators keep PowerShell wrappers and documented blocks where paths differ."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-038",
+        "title": "Cross-Platform companies.json Catalog for job search pull",
+        "status": "Approved",
+        "created_date": "2026-09-02",
+        "approval_date": "2026-09-02",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-007", "ADR-008", "ADR-009"],
+        "references": [],
+        "context": {
+          "problem_statement": "Greenhouse board tokens lived in greenhouse/boards.json. That file could not represent multiple ingest sources per company, industry tags, or a future cross-platform catalog without duplicating criteria and puller inputs.",
+          "drivers": [
+            "Replace per-platform boards.json with a job-search root companies.json catalog.",
+            "Two source slots per company (ats and company) with independent enabled flags.",
+            "industries[] on the company row for later vertical (more companies per industry) and horizontal (more industries) discovery.",
+            "Point the existing Greenhouse pull at enabled ats rows with platform greenhouse and a non-empty board_token.",
+            "Park at-scale discovery, detect_ats, two-phase fetch, and local/VM scheduling as Phase 2."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Add COMPANIES_FILE to the locked job-search schema; git mv greenhouse/boards.json to .ai/history/job-search/companies.json; fetch_jobs.py reads pullable Greenhouse ats sources from that catalog and ignores industries[] and the company slot.",
+          "justification": "The catalog is the missing company/board list without changing pull cadence or inventing a discovery pipeline. Industry tags are stored now so a later session can groom industry-scoped ingest. GitHub Actions remains the Phase 1 pull host for the current one-board catalog.",
+          "implications": [
+            "companies.json is the source of truth for which Greenhouse boards to pull.",
+            "fetch_jobs.py fails closed on schema/semantic catalog errors or zero pullable Greenhouse ats sources.",
+            "Dashboard discoverPlatforms skips companies.json so it is not treated as a platform folder.",
+            "CI and CD validate companies.json when it changes.",
+            "Phase 2 (parked): local/VM scheduled discovery and job pull at scale; discover_greenhouse.py; detect_ats.py; per-platform puller rename; two-phase fetch; industry/locality-scoped discovery grooming.",
+            "Product LinkedIn references and HTML listing scrape remain out of scope (ADR-007)."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Keep greenhouse/boards.json and add industries there",
+            "verdict": "Rejected",
+            "reasoning": "A platform-local boards list cannot hold two ingest slots or a cross-platform company identity."
+          },
+          {
+            "option": "Ship URL-index discovery and GHA all-board pull in the same change",
+            "verdict": "Rejected",
+            "reasoning": "At-scale harvest does not fit current GitHub Actions pricing; that work is Phase 2 on a local or VM scheduler."
+          },
+          {
+            "option": "Filter the daily pull by industries[] now",
+            "verdict": "Rejected",
+            "reasoning": "Phase 1 only relocates the board list. Industry-scoped pull is a later grooming session."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-039",
+        "title": "Required nullable posted_at on locked job objects",
+        "status": "Approved",
+        "created_date": "2026-09-03",
+        "approval_date": "2026-09-03",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-008"],
+        "references": [],
+        "context": {
+          "problem_statement": "Listing age was not a first-class field on jobs.json. Pull date and status timestamps do not represent when the employer posted the role, so newer openings could not be prioritized over older ones.",
+          "drivers": [
+            "Store posting age as YYYY-MM-DD or null on every job object.",
+            "Parse source dates at ingest; never invent from updated_at or pulled_at.",
+            "Backfill historical Greenhouse pulls with null.",
+            "SerpApi relative chips and Greenhouse first_published/created_at are the parse sources."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Add required posted_at (YYYY-MM-DD|null) to the locked job schema; shared parse_posted_at in greenhouse/normalize.py; merge keeps a prior date when the new pull parses null.",
+          "justification": "Posting age is an extra priority signal. Omitting the key when unknown would break additionalProperties:false consumers; treating updated_at or pull date as posted would invent chronology.",
+          "implications": [
+            "Every job object must include posted_at.",
+            "Historical greenhouse/src/*/jobs.json rows are backfilled to null.",
+            "Validators enforce null or YYYY-MM-DD.",
+            "Dashboard sort/column is not required for this schema change."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Omit posted_at when unknown",
+            "verdict": "Rejected",
+            "reasoning": "additionalProperties:false plus inconsistent keys complicate validators and consumers."
+          },
+          {
+            "option": "Use updated_at or pulled_at as posted_at",
+            "verdict": "Rejected",
+            "reasoning": "Those timestamps are mutation/pull time, not original post date."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-040",
+        "title": "Compartmentalized Data Ingestion Pipelines",
+        "status": "Approved",
+        "created_date": "2026-09-03",
+        "approval_date": "2026-09-03",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "supersedes": ["ADR-013"],
+        "amends": ["ADR-007", "ADR-009"],
+        "extends": ["ADR-013", "ADR-038"],
+        "context": {
+          "problem_statement": "ADR-013 assumed a single Greenhouse puller in a flat .github/scripts/job-search/ tree and one GHA job that fetch, validate, and commit in sequence. Additional ingest sources cannot share that layout without coupling failure domains and blocking independent development.",
+          "drivers": [
+            "Compartmentalize extract, transform, load, and validate per platform.",
+            "Shared utilities live in common/; platform entry scripts are named fetch_{platform}_jobs.py.",
+            "job-search-pull.yml remains the single scheduled entry point.",
+            "Platform jobs upload artifacts; one commit job pushes combined results to main.",
+            "SerpApi failure or skip must not block a successful Greenhouse commit."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Platform folders under .github/scripts/job-search/ (common, greenhouse, serp-api) plus parallel GHA jobs greenhouse-pull, serpapi-pull, and commit-and-push",
+          "justification": "Single-platform assumptions in ADR-013 do not scale. Folder isolation enables independent tests and failure isolation while keeping one daily coordinated schedule and one push to main.",
+          "implications": [
+            "PYTHONPATH includes .github/scripts/job-search so imports are common.* and greenhouse.*.",
+            "fetch_jobs.py is greenhouse/fetch_greenhouse_jobs.py.",
+            "write_analysis_stubs.py --platform selects the sandbox under .ai/history/job-search/{platform}/.",
+            "workflow_dispatch platform=all|greenhouse|serpapi selects which ingest jobs run.",
+            "SerpApi fetch is a skip placeholder until the SerpApi Jobs POC (child 2).",
+            "Direct-to-main validated commit behavior from ADR-013 is retained by the commit-and-push job.",
+            "Sandbox data layout under .ai/history/job-search/{platform}/ is unchanged (ADR-007). Criteria remain centralized in locked-job-search-criteria.json (ADR-009).",
+            "stamp_deployed_ledger.py loads scripts/ci/common.py by file path so it is not shadowed by the job-search common package."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Keep a flat script directory and add sequential SerpApi steps to the single pull job",
+            "verdict": "Rejected",
+            "reasoning": "Couples platform failures, blocks parallel development, and keeps Greenhouse-named fetch_jobs.py as a false shared entrypoint."
+          },
+          {
+            "option": "One GHA workflow file per platform with independent commits to main",
+            "verdict": "Rejected",
+            "reasoning": "Multiple daily pushes race on main; a final commit job preserves one coordinated snapshot."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-041",
+        "title": "Multi-id locked job-search criteria envelope and SerpApi Google Jobs POC",
+        "status": "Approved",
+        "created_date": "2026-09-03",
+        "approval_date": "2026-09-03",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "amends": ["ADR-009"],
+        "extends": ["ADR-038", "ADR-040"],
+        "references": [],
+        "context": {
+          "problem_statement": "ADR-009 put one filter object in locked-job-search-criteria.json for every puller. SerpApi Google Jobs request params do not match Greenhouse title/location filters, and tuning Google Jobs must not rewrite Greenhouse criteria.",
+          "drivers": [
+            "One criteria file, many id records (jsc_001 greenhouse, jsc_002 google_jobs).",
+            "SerpApi puller in serpapi-pull GHA job with Environment production SERPAPI_API_KEY.",
+            "jsc_002.max_searches caps billed google_jobs HTTP requests (not jobs kept). Pagination still at most one extra page per query. Monthly free-plan budget from account.json.",
+            "Catalog source=serpapi with ats.enabled=false for detected boards.",
+            "job-analysis must not read this file."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "criteria[] envelope; fetch_greenhouse_jobs loads jsc_001; fetch_serpapi_jobs loads jsc_002; QUOTA_STOP skips SerpApi without failing Greenhouse commit.",
+          "justification": "Keeps a single locked file while isolating pipeline-specific request fields. Parallel GHA jobs already isolate failure domains (ADR-040).",
+          "implications": [
+            "jsc_001 filter values stay unchanged; only pipeline is added.",
+            "jsc_002 owns Google Jobs wire fields (search_query, location, date_posted, industry_query, max_searches, etc.). Empty location.include is nationwide regardless of include_remote.",
+            "Orchestrator/job-analysis remain Greenhouse-only for this POC.",
+            "companies.json may gain serpapi-sourced rows with enabled=false until manually enabled."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Per-platform criteria files under .ai/history/job-search/",
+            "verdict": "Rejected",
+            "reasoning": "Splits the locked SoT and complicates guardrail validation."
+          },
+          {
+            "option": "OR-join all search_query terms into one SerpApi q",
+            "verdict": "Rejected",
+            "reasoning": "One billed search per include entry is the SoT fan-out and keeps result quality per title."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-042",
+        "title": "Multi-platform analysis and tailor queue minting",
+        "status": "Approved",
+        "created_date": "2026-09-05",
+        "approval_date": "2026-09-05",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "amends": ["ADR-041"],
+        "extends": ["ADR-040", "ADR-041"],
+        "context": {
+          "problem_statement": "After SerpApi ingest, stubs land under .ai/history/job-search/serpapi/ but generate-analysis-queue.py and generate-tailor-queue.py hardcoded PLATFORM=greenhouse. Claim/copy/consume fell back to greenhouse when platform was missing. Orchestrator and job-analysis skills still described Greenhouse-only pickup.",
+          "drivers": [
+            "Queue every eligible sandbox that has src/, including serpapi and future platforms.",
+            "One queue file equals one platform; envelope platform stays a single required field.",
+            "No shared discover_platforms helper; each generator scans sandboxes inline.",
+            "Fail-closed if queue platform is missing or empty; do not default to greenhouse."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Inline src/ sandbox scan in generate-analysis-queue.py and generate-tailor-queue.py; per-platform queue files; optional --platform filter; fail-closed platform on claim/copy/consume",
+          "justification": "ADR-041 left orchestrator/job-analysis Greenhouse-only for the SerpApi POC. Pickup must follow ingest without a shared catalog-discovery module (child 4 owns Greenhouse companies.json upsert separately).",
+          "implications": [
+            "Default mint walks .ai/history/job-search/{platform}/ where src/ exists; skip queue and dashboard.",
+            "Optional --platform (comma list or repeatable) limits discovery; unknown names fail-closed.",
+            "--job-id resolves the sandbox from the id prefix (serpapi:... -> serpapi).",
+            "max_jobs_per_agent batches within a platform; batch_number restarts per platform.",
+            "consume_analysis_queue.py, claim_tailor_in_progress.py, and consume_tailor_queue.py require a non-empty platform.",
+            "purge_dated_src.py already walks all platform dirs (skip queue, dashboard); companies.json is a file and is not a sandbox.",
+            "Dashboard discoverPlatforms probes src/ and does not inject greenhouse when the tree is empty.",
+            "Orchestrator validates each existing {platform}/approved-jobs.json after consume, not only greenhouse."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Shared common/platforms.py discover_platforms used by ingest and queue minting",
+            "verdict": "Rejected",
+            "reasoning": "Ingest pipelines own unique catalog write logic (child 4). Queue minting must not centralize discovery for reuse by Greenhouse upsert."
+          },
+          {
+            "option": "Mixed-platform jobs in a single queue file",
+            "verdict": "Rejected",
+            "reasoning": "Would change the queue envelope schema. Analysis and tailor skills process one file with one platform path."
+          },
+          {
+            "option": "Keep silent greenhouse fallback when platform is missing",
+            "verdict": "Rejected",
+            "reasoning": "Would write SerpApi consume/claim/copy onto the greenhouse ledger."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-043",
+        "title": "TalentBrew company-slot ingest is local Windows",
+        "status": "Approved",
+        "created_date": "2026-09-06",
+        "approval_date": "2026-09-06",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "amends": ["ADR-038", "ADR-040"],
+        "extends": ["ADR-038", "ADR-039", "ADR-040", "ADR-041"],
+        "context": {
+          "problem_statement": "Capital One careers is Phenom TalentBrew at ~1758 live jobs. That scale does not belong on GitHub Actions billing (ADR-038 Phase 2). Listing identity and Workday requisition are different objects on the same page.",
+          "drivers": [
+            "Company-slot ingest, not ats.platform=talentbrew/phenom.",
+            "Local Windows host with pull-jobs.ps1 commit/push to main after merge, matching GHA commit-and-push.",
+            "Listing PK is TalentBrew posting seq; Workday requisition is optional workday_requisition_id on $defs.job.",
+            "No new Python packages. No GHA TalentBrew job."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Local TalentBrew puller under .github/scripts/job-search/talentbrew/ writing .ai/history/job-search/talentbrew/src/{date}/jobs.json; jsc_003; catalog company.enabled; optional workday_requisition_id",
+          "justification": "Public search-jobs/results JSON plus detail JSON-LD is the vendor search API. Workday CXS is a different id space. SerpApi is quota-bound aggregator quality.",
+          "implications": [
+            "id is talentbrew:{board_token}:{source_job_id} with digits-only listing seq.",
+            "workday_requisition_id is correlation/audit only; merge and close-missing stay keyed on listing id.",
+            "Greenhouse and SerpApi omit workday_requisition_id. TalentBrew always writes the key.",
+            "Scheduled JobForge-TalentBrew-Pull runs daily 08:00 UTC after GHA 07:00 UTC.",
+            "Ingest code ships on a feature-branch PR; scheduled commit/push of jobs.json is direct-to-main after merge."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Workday CXS as the ingest source",
+            "verdict": "Rejected",
+            "reasoning": "Different site and id space; POST-only; empty lists when limit != 20."
+          },
+          {
+            "option": "GitHub Actions TalentBrew job",
+            "verdict": "Rejected",
+            "reasoning": "Page volume and 1.5s pacing exceed ADR-038 Phase 2 GHA billing posture."
+          },
+          {
+            "option": "Use Workday requisition as source_job_id",
+            "verdict": "Rejected",
+            "reasoning": "R… fails locked digits-only source_job_id; recast postings would collapse distinct listing rows."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-044",
+        "title": "Web research moves from job-analysis to resume-tailor",
+        "status": "Approved",
+        "created_date": "2026-09-07",
+        "approval_date": "2026-09-07",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "amends": ["ADR-026", "ADR-028", "ADR-029"],
+        "extends": ["ADR-026", "ADR-028", "ADR-029"],
+        "context": {
+          "problem_statement": "job_analysis_policy_001 owned unlimited WebSearch/WebFetch per listing. Analysis still maps every queued job, including rejects, so live research ran before qualification. Resume-tailor already runs only on approved (or manually chosen) roles and already writes company/compensation notes into engineering-log.md.",
+          "drivers": [
+            "Analysis stays LLM mapping against locked evidence. No live web.",
+            "Live WebSearch/WebFetch run only in resume-tailor, after qualification.",
+            "Research caps stay in locked-agent-policies.json. 0/null skip that tool; omitted/negative halt the owning skill.",
+            "Queue-invoked tailor consumes analysis from the tailor-request row, not analyses/*.json."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Remove research from job_analysis_policy_001. Add research under resume_tailor_policy_001 with max_web_searches_per_job 5 and max_web_fetches_per_job 3. Analysis always persists external_context.decision_impact none and sources []. Company and NYC/NJ compensation research is audit-only in the tailor engineering log and must not change the queue-row decision.",
+          "justification": "Rejected listings should not pay for web research. Caps replace ADR-026 unlimited analysis research. Tailor already owns the human-readable research sink. Analysis sidecar schema stays required and empty.",
+          "implications": [
+            "job-analysis reads execution only. Absence of research on that record is not a halt.",
+            "resume-tailor reads execution and research. Fan-out stays serial.",
+            "Queue-invoked tailor mints engineering-log sections 1-3 from the queue row via upsert_engineering_log.py, then fills research placeholders, then writes section 4.",
+            "Do not rewrite ADR-026 or ADR-029 selected_option text. This ADR supersedes research placement only."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Keep unlimited analysis research (ADR-026 first-ship)",
+            "verdict": "Rejected",
+            "reasoning": "Burns search/fetch on jobs that will be rejected before tailor."
+          },
+          {
+            "option": "Thin sidecar / first-fatal knockout instead of full analysis mapping",
+            "verdict": "Rejected",
+            "reasoning": "Qualification still needs experience, named-tech skills, and constraints against locked evidence."
+          },
+          {
+            "option": "Unlimited tailor research",
+            "verdict": "Rejected",
+            "reasoning": "Approved roles still need a per-job cap. First-ship is 5 searches and 3 fetches."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-045",
+        "title": "Queue-invoked tailor slugs always suffix source_job_id (extends ADR-011 nested sandbox)",
+        "status": "Approved",
+        "created_date": "2026-09-08",
+        "approval_date": "2026-09-08",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "amends": ["ADR-011", "ADR-028"],
+        "extends": ["ADR-011", "ADR-028"],
+        "references": ["DEF-002"],
+        "context": {
+          "problem_statement": "Sandbox and feature-branch identity was kebab_case(company)+kebab_case(title) only. Same display titles (Capital One generic reqs; SerpAPI recrawl ids) fail-closed at P2-X1 after orchestrator claim, so distinct listings never got a resume.",
+          "drivers": [
+            "Queue mint writes company_slug and position_slug. Ledger PK stays id.",
+            "Always-suffix for generate-tailor-queue.py (full mint and --job-id). Collision-only suffix rejected.",
+            "Suffix token is source_job_id only. Never workday_requisition_id (R*).",
+            "source_job_id longer than 10 characters uses the last 10; shorter values use the full id.",
+            "Manual resume-tailor (no queue) keeps unsuffixed parent-folder slugs.",
+            "Do not change kebab_case() itself (SerpAPI board tokens).",
+            "Do not rewrite unsuffixed winner folders. Failed collision rows remint onto the new convention as a one-time ops step."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "generate-tailor-queue.py always writes company_slug=kebab_case(company) and position_slug=kebab_case(title)-{source_job_id suffix}. Queue-invoked resume-tailor honors those slugs and does not re-kebab title. P2-X1 stays fail-closed when that sandbox is bound to a different id. Missing source_job_id fail-closes mint. SerpAPI recrawl skip is out of scope.",
+          "justification": "ADR-011 nested {company}/{position} is still the sandbox architecture. Title-only position folders cannot express concurrent same-title listings. Always-suffix on the queue-invoked position segment keeps that layout, avoids same-batch occupancy races, and leaves historical unsuffixed winner PRs and manual drop-JD folders untouched.",
+          "implications": [
+            "ADR-011 layout is unchanged: one feature branch maps to one two-segment sandbox .ai/history/resume-tailor/{company_slug}/{position_slug}/. The position segment is still kebab-case; queue-invoked mint appends -{source_job_id suffix}.",
+            "Dual convention: (1) Queue-invoked / --job-id mint always suffixes position_slug from source_job_id (last 10 characters if longer than 10; else full). Never workday_requisition_id. (2) Manual resume-tailor (no queue) keeps legacy unsuffixed kebab_case(company)+kebab_case(title) from parent folders of job-description.md. (3) Historical unsuffixed folders and open winner PRs are not rewritten; DEF-002 losers remint onto the suffixed convention.",
+            "Queue-invoked tailor reads company_slug and position_slug from the queue row. Do not re-kebab listing title. P2-X1 stays fail-closed when that sandbox is bound to a different id.",
+            "validate_tailor_request.py requires company_slug and position_slug on every queue row.",
+            "claim_tailor_in_progress.py stays file-level.",
+            "SKIP_STATUSES still includes failed; remint of collision losers is a one-time ledger reset to approved, not a mint flag.",
+            "Do not rewrite ADR-011 or ADR-028 selected_option text. This ADR extends nested sandbox identity for queue-invoked runs only."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Collision-only suffix when company+title is already bound",
+            "verdict": "Rejected",
+            "reasoning": "Same-batch distinct reqs share a title before either sandbox exists; occupancy is not on main disk."
+          },
+          {
+            "option": "Suffix with workday_requisition_id (R*)",
+            "verdict": "Rejected",
+            "reasoning": "Workday id is not listing identity (ADR-043). SerpAPI and Greenhouse omit the key."
+          },
+          {
+            "option": "Dedupe SerpAPI recrawls / location clones at ingest or mint",
+            "verdict": "Rejected",
+            "reasoning": "Out of scope for DEF-002. Distinct job_ids each get a unique suffixed sandbox."
+          },
+          {
+            "option": "Change kebab_case() globally",
+            "verdict": "Rejected",
+            "reasoning": "SerpAPI normalize uses kebab_case for company/board tokens."
+          },
+          {
+            "option": "Add a third sandbox segment or rewrite historical unsuffixed folders to always-suffix",
+            "verdict": "Rejected",
+            "reasoning": "ADR-011 two-segment company/position layout and CI folder resolution stay. Manual drop-JD and already-open winner PRs keep unsuffixed paths."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-046",
+        "title": "SerpAPI close is manual; close-wins stays ATS-board only (amends ADR-022)",
+        "status": "Approved",
+        "created_date": "2026-09-08",
+        "approval_date": "2026-09-08",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "amends": ["ADR-022"],
+        "extends": ["ADR-022"],
+        "references": ["DEF-005", "DEF-004"],
+        "context": {
+          "problem_statement": "ADR-022 close-missing treated any id absent from today's jobs.json as closed on the nearest prior file. SerpAPI Google Jobs is a ranked, billed, non-deterministic result set, not a complete board snapshot. Auto-close false-closed live listings, skipped analysis, and dropped dashboard join rows.",
+          "drivers": [
+            "Board snapshot vs search: Greenhouse and TalentBrew today-file absence is board-gone. SerpAPI absence is not proof the posting was taken down.",
+            "Manual close only: SerpAPI status closed is a human last-seen JSON edit. No pull-time auto-close. No close CLI this cut.",
+            "Live file shape unchanged: today's SerpAPI jobs.json stays this-pull listings only. Do not copy yesterday's live rows into today.",
+            "Analysis agents must not invent closed (unchanged)."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Remove close_missing_on_prior from fetch_serpapi_jobs.py. Greenhouse and TalentBrew keep ADR-022. SerpAPI closed is a human edit of the last-seen dated row. One-shot DEF-005 reopen rewrites existing SerpAPI closed rows from sidecar (init stub revision 0 → new; filled → active; missing sidecar left closed).",
+          "justification": "Close-wins is a fact about ATS board presence. Google Jobs result-set churn is not board presence. Keeping today's file as this-pull listings avoids mixing history into the live join. Last-seen closed still skips generate-analysis-queue.py, so a documented human edit is enough to retire a listing.",
+          "implications": [
+            "fetch_serpapi_jobs.py prints Closed: 0 / SUMMARY closed=0 after a successful pull. Prior dated files are not rewritten at pull time.",
+            "Do not rewrite ADR-022 selected_option. This ADR narrows close-wins to Greenhouse and TalentBrew.",
+            "job-data-model.json closed notes distinguish ATS CI close-missing from SerpAPI human close.",
+            "Human SerpAPI close: in the most recent dated jobs.json that contains the id, set status=closed and stamp status_updated_at now. Do not invent closed during analysis.",
+            "One-shot reopen of historically false-closed SerpAPI rows is part of DEF-005, not a reusable script.",
+            "DEF-004 widget title fallback remains required: rolled-off ids still leave today's live file."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Copy yesterday's live SerpAPI rows into today so close-missing never fires",
+            "verdict": "Rejected",
+            "reasoning": "Today's file would mix this-pull results with stale listings and would keep close-wins on a non-authoritative snapshot."
+          },
+          {
+            "option": "Ship a SerpAPI close CLI this cut",
+            "verdict": "Rejected",
+            "reasoning": "Human last-seen JSON edit is enough. generate-analysis-queue.py already skips last-seen closed."
+          },
+          {
+            "option": "Leave historically false-closed SerpAPI rows closed",
+            "verdict": "Rejected",
+            "reasoning": "Default analysis mint would keep skipping last-seen closed stubs."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-047",
+        "title": "Dashboard widget titles index all dated src files; live G9 join stays latest-src only (extends ADR-007, ADR-008, ADR-046)",
+        "status": "Approved",
+        "created_date": "2026-09-08",
+        "approval_date": "2026-09-08",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-007", "ADR-008", "ADR-046"],
+        "references": ["DEF-004", "ADR-048"],
+        "context": {
+          "problem_statement": "P2-D1 execution widgets resolve Title from the G9 live join only. The join reads {platform}/src/{latest-date}/jobs.json. SerpAPI daily files drop listings Google no longer returns (ADR-046). Ledger rows for those ids still appear in PR ready / in progress / failed with a blank Title.",
+          "drivers": [
+            "Live join contract unchanged: main table lists new|active rows from the latest dated file only. Do not add rolled-off or closed jobs back onto the join.",
+            "Widgets are ledger-scoped: they must remain readable after a listing leaves today's live file.",
+            "Dashboard stays read-only POC: no writes to ledgers or src/.",
+            "Do not invent listing titles. Prefer a previously ingested jobs.json title when that file is still on disk."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Dashboard builds a display-only title index from every remaining dated {platform}/src/*/jobs.json. Latest non-empty title/company for an id wins. The G9 live join still uses only the latest dated file and still skips closed. Widgets call this index when the id is absent from the live join.",
+          "justification": "ADR-046 keeps today's SerpAPI file as this-pull listings. That is correct for presence. Execution widgets are not a presence board; they show ledger work that often outlives the live file. Walking remaining dated src files reuses ingested titles without changing pull shape or approvedJob.",
+          "implications": [
+            "Do not rewrite ADR-007, ADR-008, or ADR-046 selected_option. This ADR extends dashboard display only.",
+            "job-data-model.json documents dashboard_widgets title resolution and that closed/rolled-off ids stay off the live join.",
+            "Empty title strings are not written into jobs.json to fix widgets.",
+            "When every dated src file that held the id is purged, ADR-048 slug/placeholder fallback still yields a non-empty Title cell."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Add rolled-off ledger ids back onto the G9 live join",
+            "verdict": "Rejected",
+            "reasoning": "The main table is a live presence board. Mixing closed or yesterday-only SerpAPI rows would reopen ADR-046 live-file shape."
+          },
+          {
+            "option": "Copy yesterday's live SerpAPI rows into today so titles stay on the join",
+            "verdict": "Rejected",
+            "reasoning": "Rejected in ADR-046. Widget display must not force stale listings into the live file."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-048",
+        "title": "Widget title slug fallback is display-only; approvedJob stays id-only (extends ADR-008, ADR-045)",
+        "status": "Approved",
+        "created_date": "2026-09-08",
+        "approval_date": "2026-09-08",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-008", "ADR-045"],
+        "references": ["DEF-004", "DEF-002", "ADR-047"],
+        "context": {
+          "problem_statement": "A historical src title index (ADR-047) still fails after dated src/ purge. approvedJob has no title or company (additionalProperties false). Using sandbox_path / feature_branch kebabs as a new identity SoT would reopen DEF-002.",
+          "drivers": [
+            "Title column must stay non-empty for every ledger widget row.",
+            "Do not change locked approvedJob this cut. Denormalized title/company is optional later and needs schema, validators, and consume writers.",
+            "sandbox_path and feature_branch remain tailor identity (ADR-045). Widget kebab-to-display is presentation only.",
+            "Never invent a listing title that was not ingested or derived from an existing slug."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "If ADR-047 has no title, widgets kebab-to-display the position segment of sandbox_path, else feature_branch after the feature/ prefix. If both are missing or empty, render the explicit placeholder (title unavailable). Do not persist title or company on approvedJob.",
+          "justification": "The ledger already stores the sandbox path from a successful or failed tailor claim. That string is enough for a human-readable cell after src purge. Treating it as display keeps ADR-045 identity rules intact and avoids a locked-schema change for a read-only dashboard.",
+          "implications": [
+            "Resolution order is live join title, then any dated src title, then slug display, then (title unavailable).",
+            "Kebab-to-display is not listing identity and is not used by resume-tailor or generate-tailor-queue.py.",
+            "Do not change approvedJob.additionalProperties or add title/company without a later locked-schema ADR.",
+            "Do not rewrite ADR-008 or ADR-045 selected_option."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Persist title and company on approvedJob at consume time",
+            "verdict": "Rejected",
+            "reasoning": "Locked additionalProperties: false plus consume/validator/test churn. Not required while dated src files or sandbox slugs remain."
+          },
+          {
+            "option": "Leave the Title cell blank when src is gone",
+            "verdict": "Rejected",
+            "reasoning": "Widgets stay unreadable after purge. Acceptance requires a non-blank fallback."
+          },
+          {
+            "option": "Treat sandbox kebab as a new source of truth for tailoring identity",
+            "verdict": "Rejected",
+            "reasoning": "DEF-002 / ADR-045: listing id is the PK; slugs are sandbox path segments only."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-049",
+        "title": "Variable-length printed resume is consecutive master prefix 5-10 (extends ADR-006, ADR-015, ADR-021)",
+        "status": "Approved",
+        "created_date": "2026-09-09",
+        "approval_date": "2026-09-09",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-006", "ADR-015", "ADR-021"],
+        "references": ["ADR-010", "ADR-020"],
+        "context": {
+          "problem_statement": "The locked Word template and CI chronology check assumed exactly five printed roles matching the full master template. Older locked evidence (keys 6-10) could not deepen tenure or industry coverage without inventing facts or breaking existing five-role sandboxes.",
+          "drivers": [
+            "Prefix contract: printed roles are exactly consecutive master keys 1..N. No skipping, reordering, or arbitrary title matching.",
+            "Default N=5. Deepen to the smallest N in 6..10 only when older locked evidence closes a JD required or preferred gap not covered by 1..5.",
+            "Keys 11 (Independent Consulting) and 12 (Community Technology Center) stay off the resume and may be cited only in engineering-log.md.",
+            "One-time protected-file authorization: locked-resume-template.docx, locked-resume-master-template.md, resume-tailor/SKILL.md, and formatting-rules.mdc may be edited for this implementation only. Locked companies, titles, dates, skills, accomplishments, and metrics stay immutable.",
+            "CI compatibility: existing five-role sandboxes remain valid after the master grows to ten roles. No backfill or document regeneration.",
+            "Variable prefix tokens stay JOB_HISTORY_1..JOB_HISTORY_10. Adding slots 6-10 does not rename keys 1-5."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Ten Word/master slots; filler and CI validate a bounded consecutive prefix 5-10; unused N+1..10 paragraphs are removed; Word bolds the theme through the first colon",
+          "justification": "A bounded prefix keeps chronology locked while letting older retail/POS evidence print only when it closes a real JD gap. Exact full-master equality would force every sandbox to regenerate ten roles. Title-matched subsets would allow skipping Northstar Retail or printing keys 11-12.",
+          "implications": [
+            "Do not rewrite ADR-006, ADR-015, or ADR-021 selected_option text. This ADR extends printed-length and chronology validation only.",
+            "fill_resume.py requires 1-5 themed bullets per included role and aborts on missing theme colon, N<5, N>10, gaps, reordering, or keys 11-12.",
+            "CI validate_resume_tailor_artifacts.py compares tailored headers to master[:N], not the full ten-role master.",
+            "derive_template.py must emit the complete slot 1-10 token inventory so re-derivation cannot regress the locked Word template to five slots.",
+            "Experience may grow past one page. No hard two-page limit or page-fit pass.",
+            "Normal resume-tailor runs still never write .ai/guardrails/. The protected-file exception is this implementation cut only."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Keep exact full-master equality after growing the master to ten roles",
+            "verdict": "Rejected",
+            "reasoning": "Would invalidate every existing five-role sandbox and force backfill of older roles that do not close a JD gap."
+          },
+          {
+            "option": "Allow title-matched subsets or skipped middle jobs",
+            "verdict": "Rejected",
+            "reasoning": "Breaks locked chronology. A sixth printed role must always be Northstar Retail / Application Development Systems Analyst."
+          },
+          {
+            "option": "Print keys 11-12 when they appear to close a gap",
+            "verdict": "Rejected",
+            "reasoning": "Those roles are excluded from the resume. They remain log-only evidence."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-050",
+        "title": "Analysis Queue Listing Snapshot for Qualification Parity",
+        "status": "Approved",
+        "created_date": "2026-09-09",
+        "approval_date": "2026-09-09",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": ["ADR-025", "ADR-033"],
+        "context": {
+          "problem_statement": "Job-analysis qualification required reading the full job description and metadata from last-seen dated jobs.json files, which are large (~780 KB). Because the analysis queue file was id-only, agents were incentivized to create ad-hoc python helper scripts and dump temporary extract files (_tmp_*) to disk (DEF-006). Meanwhile, resume-tailor already used a snapshot payload pattern where listing fields are minted directly onto the queue file.",
+          "drivers": [
+            "Parity: Bring analysis-request queue files to architectural parity with tailor-request queue files by minting normalized listing fields on the queue row.",
+            "Clean working tree: Eliminate the need for agents to invent extract scripts or persist temporary files (_tmp_*) during analysis runs.",
+            "Source of Truth: Establish the invoke queue file row as the job description Source of Truth for the analysis agent, making last-seen dated jobs.json mint-only.",
+            "Schema governance: Keep the queue schema governed by the Python validator (validate_analysis_request.py) without modifying locked-job-search-data-model.json."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Mint analysis-request rows with snapshot listing fields (company, title, location, work_location_type, url, description_text); queue row is analysis JD SoT; validator enforces non-empty fields and work_location_type enum",
+          "justification": "Snapshotting the 6 normalized listing fields onto queue rows aligns analysis with the proven resume-tailor queue pattern, removes file-size pressure on analysis agents, resolves DEF-006, and prevents repo pollution.",
+          "implications": [
+            "generate-analysis-queue.py snapshots company, title, location, work_location_type, url, and description_text from the last-seen dated jobs.json, skipping jobs with missing/blank fields.",
+            "validate_analysis_request.py requires the six listing keys on all rows (pending and analysis_complete), enforcing non-empty strings and work_location_type enum (remote|hybrid|onsite|unknown).",
+            "job-analysis SKILL.md drops dated jobs.json from its Read allowlist; qualification consumes the queue row payload directly; status flipping to analysis_complete preserves listing keys.",
+            "Supersedes DEF-006's id-only queue constraint."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Keep id-only queue and add allowlisted print_last_seen_job.py helper",
+            "verdict": "Rejected",
+            "reasoning": "Stdout capture is clunky, high token churn, and leaves the two agent queues architecturally divergent."
+          },
+          {
+            "option": "Nest full listing object under listing: {$defs.job}",
+            "verdict": "Rejected",
+            "reasoning": "Unnecessary schema complexity and duplication of audit/raw fields."
+          },
+          {
+            "option": "Copy raw ATS payloads and listing status onto queue",
+            "verdict": "Rejected",
+            "reasoning": "Prevents queue bloat and avoids collision between listing status and queue lifecycle status."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-051",
+        "title": "Accordion last-page fill re-evaluation for N>5 resumes (extends ADR-049)",
+        "status": "Approved",
+        "created_date": "2026-09-10",
+        "approval_date": "2026-09-10",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": [
+          "ADR-049"
+        ],
+        "references": [
+          "ADR-006",
+          "ADR-015",
+          "ADR-021"
+        ],
+        "context": {
+          "problem_statement": "ADR-049 lets the printed resume deepen to a consecutive master prefix N in 6..10 when older locked evidence closes a JD gap, and explicitly declared no page-fit pass. In practice, deepening to N>5 can leave the final page sparse (the committed Authentic Brands N=7 resume fills only ~42% of its last page), which reads as an unfinished document even though every printed bullet is locked evidence.",
+          "drivers": [
+            "Accordion-only scope: the pass runs only when the accordion already pushed printed roles past the default five (N>5). Default N=5 resumes are untouched.",
+            "Deterministic, approximate measurement: after tailored-resume.md is written and the .docx is filled, estimate the last page fill as a fraction of usable page height (page_height minus top/bottom margins from the template sectPr) using the existing twip-width approach.",
+            "Gap-only remedy: additions must be locked evidence that closes a JD required or preferred gap and adds thematic relevance. Never pad. If no gap-closing evidence remains, ship as-is and log the rationale.",
+            "Advisory, not a gate: the estimator prints the fill % on every run and never hard-fails CI or the filler, because underfill can be legitimately unavoidable under the gap-only rule.",
+            "One-time protected-file authorization to edit .cursor/skills/resume-tailor/SKILL.md for this implementation only. No changes to locked companies, titles, dates, skills, accomplishments, or metrics."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Add an advisory scripts/resume-docx/page_fill.py estimator (page_count, last_page_fill_ratio); fill_resume.py prints the last-page fill line after writing the docx; resume-tailor SKILL.md runs a gap-only loop-until when N>5 and the last page is below ~65%, targeting ~75% usable last-page height",
+          "justification": "A deterministic twip-based estimate cleanly discriminates the underfilled N=7 accordion case (~42%) from well-filled N=5 resumes (~75-96% on committed sandboxes) without Word/COM or PDF pagination. Keeping it advisory preserves the gap-only guardrail: the loop stops when locked gap-closing evidence is exhausted rather than inventing filler.",
+          "implications": [
+            "Reverses ADR-049 decision_outcome implication \"Experience may grow past one page. No hard two-page limit or page-fit pass.\" There is still no hard two-page cap and no CI gate; the page-fill pass is an advisory re-evaluation only.",
+            "scripts/resume-docx/page_fill.py reads section page/margin geometry and the body table row/cell widths, estimates wrapped-line height per paragraph (regular-weight twip map for body bullets; bold map reused for headers), and returns (page_count, last_page_fill_ratio). Target 75% of usable last-page height; trigger re-evaluation below ~65% (tolerance band).",
+            "fill_resume.py main() prints the advisory fill line after \"wrote {dest}\"; estimator failure is caught and never fails the fill. The fill behavior itself is unchanged.",
+            "resume-tailor SKILL.md: when N>5 and last-page fill < ~65% and gap-closing locked evidence remains, first add a relevant locked bullet to an already-printed role (role stays within 1-5 bullets), else extend N by the next consecutive master role only if it adds gap-closing evidence; regenerate, re-fill, re-estimate. Naturally bounded by max 10 roles and max 5 bullets/role. Record the assessment in engineering-log.md section 2 Accomplishment Selection Strategy.",
+            "Bullet-count guidance keeps target 3 and now explicitly allows up to 5 on a printed role when the extra bullet is gap-closing locked evidence that also improves last-page fill.",
+            "resume-data-model.json documents the advisory page-fill pass; CI runs scripts/resume-docx tests when scripts/resume-docx/ changes (existing 10-slot gate). Normal resume-tailor runs still never write .ai/guardrails/."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Word/COM or PDF-based exact pagination",
+            "verdict": "Rejected",
+            "reasoning": "Requires Office automation or a PDF toolchain outside the documented CLI set, is slow, and adds a heavy dependency for what only needs an approximate advisory signal."
+          },
+          {
+            "option": "Hard two-page cap or CI gate on fill %",
+            "verdict": "Rejected",
+            "reasoning": "Under the gap-only rule an N>5 resume can legitimately underfill when no further locked gap-closing evidence exists. Gating would force padding or block valid resumes, violating the never-pad guardrail."
+          },
+          {
+            "option": "Pad the last page with generic bullets or reworded duplicates",
+            "verdict": "Rejected",
+            "reasoning": "Violates the immutable-evidence guardrail. Every addition must be locked evidence that closes a real JD gap."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-053",
+        "title": "Cover letter fill contract and analysis core_themes handoff",
+        "status": "Approved",
+        "created_date": "2026-09-11",
+        "approval_date": "2026-09-11",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": [
+          "ADR-006",
+          "ADR-015",
+          "ADR-028",
+          "ADR-044"
+        ],
+        "references": [
+          "ADR-021",
+          "ADR-045"
+        ],
+        "context": {
+          "problem_statement": "Resume-tailor had no cover-letter path. Job analysis previously dropped live research (ADR-044) so company/role themes were not available at tailor time. Cover letter generation needs locked Word/markdown templates, a token grammar, and shared alignment slots without inventing evidence or changing qualification decisions.",
+          "drivers": [
+            "Eight structural themes: contact header, recipient/date, subject, greeting, opener, letter body, call to action, closing.",
+            "Hierarchical tokens: Word section-block tokens plus nested JOB_SKILL_1..3, STRENGTH_1..3, and OPENING_HOOK resolved in markdown before fill.",
+            "Job analysis synthesizes core_themes after qualification on approved jobs only. Qualification remains locked-evidence only. external_context stays decision_impact none and sources [].",
+            "generate-tailor-queue.py copies core_themes onto *-tailor-request.json. upsert_engineering_log.py mints ### Core Strategic Themes & Alignment. Historical sidecars and queue fixtures without the key remain valid.",
+            "Dedicated scripts/cover-letter-docx/ fill package mirroring resume-docx. CD stages John_Doe_Cover_Letter_*.docx to Drive; tailored-cover-letter.md stays in git.",
+            "One-time protected-file authorization to edit .cursor/skills/job-analysis/SKILL.md and .cursor/skills/resume-tailor/SKILL.md for this implementation only."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Optional ANALYSIS.core_themes (seven strings) copied onto tailor-queue rows and minted into engineering-log.md; resume-tailor writes tailored-cover-letter.md from locked-cover-letter-template.md then fill_cover_letter.py overlays section tokens onto locked-cover-letter-template.docx",
+          "justification": "Shared core_themes keep resume, cover letter, and future artifacts aligned without re-research in tailor. Token fill is deterministic and CI-testable. Making the object optional preserves stubs and history.",
+          "implications": [
+            "locked-job-search-data-model.json $defs/coreThemes is optional on analysis. additionalProperties false. job_skill_1..3 must exist in locked-skills.json.",
+            "Rejected jobs omit core_themes. Approved fills going forward write all seven strings. Live research may inform themes but must not change analysis.decision.",
+            "job_analysis_policy_001.research returns (max 5 searches / 3 fetches) for the post-qualification theme pass only. ADR-044 still forbids using web sources as qualification evidence.",
+            "validate_tailor_request.py allowlists core_themes; when present, all seven string keys are required. generate-tailor-queue.py copies the object when the current sidecar has it.",
+            "scripts/cover-letter-docx/derive_cover_letter_template.py derives the locked Word template from .cursor/plans/John_Doe_Cover_Letter.docx. fill_cover_letter.py writes John_Doe_Cover_Letter_{Company_Title_Case}.docx and aborts on leftover {{.",
+            "CI/CD stages five Drive artifacts: resume md/docx, cover letter docx, engineering-log, outreach. Validation of cover letter files applies only to changed sandboxes.",
+            "Normal resume-tailor runs still never write .ai/guardrails/. Queue reuse may delete generated cover letter artifacts but never job-description.md or job-id.txt."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "Name the sidecar object cover_letter_themes",
+            "verdict": "Rejected",
+            "reasoning": "Themes are shared by resume, cover letter, and future keys; core_themes is the generic name."
+          },
+          {
+            "option": "Fill the Word template with Office MCP paragraph edits",
+            "verdict": "Rejected",
+            "reasoning": "Token fill is deterministic, CI-testable, and matches the resume-docx pattern."
+          },
+          {
+            "option": "Require core_themes on analysis stubs and historical sidecars",
+            "verdict": "Rejected",
+            "reasoning": "Optional on ANALYSIS so stubs and history validate; approved fills going forward should write all seven strings."
+          }
+        ]
+      },
+      {
+        "decision_id": "ADR-054",
+        "title": "Greenhouse board token discovery, catalog upsert, and auto-enable of ATS pulls",
+        "status": "Approved",
+        "created_date": "2026-09-14",
+        "approval_date": "2026-09-14",
+        "author": "IT Solution Architect",
+        "approver": "User",
+        "extends": [
+          "ADR-009",
+          "ADR-040",
+          "ADR-041",
+          "ADR-043"
+        ],
+        "amends": [
+          "ADR-041"
+        ],
+        "context": {
+          "problem_statement": "The public Greenhouse Job Board API requires a known {board_token} and has no directory endpoint. Catalog Greenhouse ingest only pulls ats.enabled=true rows (greenhouse_ats_boards()). Tokens today are manual (source=manual). There is no automated, criteria-driven way to discover new Greenhouse boards, write them into companies.json, and turn on the next scheduled ATS pull.",
+          "drivers": [
+            "Local Windows scheduled task (same posture as TalentBrew / ADR-043); not a GitHub Actions job (Chrome session is on the user machine; discovery volume must not burn GHA minutes).",
+            "Session cookie scraped from Chrome Default and passed as --session-cookie; decrypt with stdlib ctypes (DPAPI + BCrypt AES-GCM); copy Cookie SQLite to a temp file while Chrome is open.",
+            "Targeted discovery via jsc_004 search chips (Cartesian product of search_term with non-empty filter chips), not a full MyGreenhouse crawl.",
+            "Catalog upsert is insert-new-only: early dedupe by company_id or existing ats.board_token; never mutate existing rows (including source=manual and prior SerpApi first-fill).",
+            "Probe after new-company selection: GET boards-api.greenhouse.io/v1/boards/{board_token}/jobs. Reachable -> upsert with ats.enabled=true (auto-enables the next Greenhouse pull). Unreachable -> still upsert, ats.enabled=false (tracked, not pulled).",
+            "Discovery does not write jobs.json. Auto-enable is catalog-only: the next scheduled Greenhouse pull (fetch_greenhouse_jobs.py / GHA) reads newly enabled boards through greenhouse_ats_boards() and filters listings with jsc_001."
+          ]
+        },
+        "decision_outcome": {
+          "selected_option": "Local discover_greenhouse_boards.py + discover-boards.ps1. Chrome cookie -> Inertia search on my.greenhouse.io -> extract tokens -> early dedupe -> probe -> upsert new companies.json rows (ats.source=greenhouse_discovery). Probe pass auto-enables ATS (ats.enabled=true); probe fail inserts disabled.",
+          "justification": "MyGreenhouse is the only Greenhouse surface that lists jobs across customers. The public board API remains the ingest SoT once a token is known. Insert-new upsert plus probe-gated enabled keeps the ledger append-only, auto-wires reachable boards into the existing puller, and prevents the puller from hammering dead boards.",
+          "implications": [
+            "Add jsc_004 to locked-job-search-criteria.json; fetch_greenhouse_jobs.py continues to load jsc_001 only. No puller code change is required for auto-enable.",
+            "New reachable boards appear on the next Greenhouse scheduled pull automatically because greenhouse_ats_boards() already selects ats.enabled is True and platform == greenhouse.",
+            "Missing/expired Chrome session: log and exit 0 (scheduled task skip, not a hard fail).",
+            "HTTP 429/503: retry up to 3 with exponential backoff; honor request_delay_ms.",
+            "Zero new companies: no git commit. New upserts: commit/push companies.json on main with a discovery summary (+N new boards (total M enabled)).",
+            "No new pip packages. Cookie crypto stays in ctypes.",
+            "Normal discovery runs still never write .ai/guardrails/ (criteria is configured once via jsc_004)."
+          ]
+        },
+        "alternatives_considered": [
+          {
+            "option": "SerpAPI / Google site:job-boards.greenhouse.io dorking",
+            "verdict": "Rejected",
+            "reasoning": "Billed, noisy, not chip-targeted, and already a separate ingest (ADR-041)."
+          },
+          {
+            "option": "GitHub Actions discovery job",
+            "verdict": "Rejected",
+            "reasoning": "No user Chrome session; GHA billing (ADR-038/043 posture)."
+          },
+          {
+            "option": "Manual-only token entry and manual ats.enabled flips",
+            "verdict": "Rejected",
+            "reasoning": "Does not scale; catalog has very few enabled Greenhouse boards."
+          },
+          {
+            "option": "Probe-then-skip-insert on 404",
+            "verdict": "Rejected",
+            "reasoning": "Loses historical tracking of discovered-but-private boards."
+          },
+          {
+            "option": "Upsert/enable existing catalog rows",
+            "verdict": "Rejected",
+            "reasoning": "Mutates human or SerpApi first-fill slots; ADR-054 upsert is new companies only."
+          },
+          {
+            "option": "Discovery writing jobs.json directly",
+            "verdict": "Rejected",
+            "reasoning": "Bypasses jsc_001 listing filters and the existing Greenhouse ingest contract (ADR-040)."
+          }
+        ]
+      }
+    ]
+  }

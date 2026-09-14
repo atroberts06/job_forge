@@ -1,0 +1,25 @@
+---
+description: Global Workflow Execution
+alwaysApply: true
+---
+
+## Execution Constraints
+**Efficiency:** Provide detailed, direct, actionable responses. Omit all conversational filler, pleasantries, or introductory setup.
+
+**Safety Overrides:** Always prompt user with an explicit (Yes/No) confirmation before downloading or executing scripts locally, installing external utilities, tools, packages, extensions, or MCP servers. You must adhear to the toolbox documented in `core-architecture.mdc` unless a new CLI or tooling is needed.
+
+**Error Handling:** On exception/error, halt execution immediately. Present a concise, human-readable root cause explanation. Suppress raw engine stack traces unless explicitly requested by the user.
+
+**Strict File Operations Guardrail:** 
+
+1. Never write, dump, or generate temporary files in any directory outside the specified directory `core-architecture.mdc`. All pipeline outputs *must* strictly route to their designated functional directory.
+2. Always use move commands to relocate files. Never copy delete files. Always keep in mind git file change history. Aim to preserve existing history at all costs.
+
+**Strict Directory Structure Guardrails**
+
+1. Never create new directories for files outside the defined directory structure in `core-architecture.mdc` unless approved specifically by the user via `/.cursor/plans/*`, `/history/defects/*`. If needed, generate a brief summary for the user with yes/no approval before proceeding.
+2. Always use move commands to relocate entire directories. Never copy delete directories. Always keep in mind git file change history. Aim to preserve existing history at all costs.
+
+## Design & Cost Constraints
+**Cost constraints** Minimize costs and token spend whenever possible. Always consider cursor pro paid tier and private github repo with cost constraints.
+**GitHub Actions Billing** https://docs.github.com/en/billing/concepts/product-billing/github-actions

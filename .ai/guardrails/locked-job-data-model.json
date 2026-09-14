@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "JobDataModel",
+  "description": "Single analysis JSON Schema for candidate eligibility. Instance files live under .ai/guardrails/ (contact parent plus related children). No per-file schemas for certifications, clearance, or licenses. Sidecar/queue/policy are separate.",
+  "$defs": {
+    "contactLink": {
+      "type": "object",
+      "required": ["platform", "url"],
+      "additionalProperties": false,
+      "properties": {
+        "platform": { "type": "string" },
+        "url": { "type": "string" }
+      }
+    },
+    "CONTACT": {
+      "type": "object",
+      "required": [
+        "id",
+        "first_name",
+        "last_name",
+        "email",
+        "phone",
+        "city",
+        "state",
+        "postal_code",
+        "country",
+        "links",
+        "work_authorization",
+        "mobility",
+        "education_id",
+        "skills_id",
+        "job_history_id",
+        "professional_summary_id",
+        "projects_id",
+        "certifications_id",
+        "clearance_id",
+        "licenses_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "first_name": { "type": "string" },
+        "last_name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "city": { "type": "string" },
+        "state": { "type": "string" },
+        "postal_code": { "type": "string" },
+        "country": { "type": "string" },
+        "links": { "type": "array", "items": { "$ref": "#/$defs/contactLink" } },
+        "work_authorization": { "type": "array", "items": { "type": "string" } },
+        "mobility": { "type": "array", "items": { "type": "string" } },
+        "education_id": { "type": "string" },
+        "skills_id": { "type": "string" },
+        "job_history_id": { "type": "string" },
+        "professional_summary_id": { "type": "string" },
+        "projects_id": { "type": "string" },
+        "certifications_id": { "type": "string" },
+        "clearance_id": { "type": "string" },
+        "licenses_id": { "type": "string" }
+      }
+    },
+    "EDUCATION": {
+      "type": "object",
+      "required": ["id", "institution", "location", "degree", "end_date"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "institution": { "type": "string" },
+        "location": { "type": "string" },
+        "degree": { "type": "string" },
+        "end_date": { "type": "string" }
+      }
+    },
+    "SKILLS": {
+      "type": "object",
+      "required": ["id", "selected_skills", "all_skills"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "selected_skills": { "type": "array", "items": { "type": "string" } },
+        "all_skills": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "PROFESSIONAL_SUMMARY": {
+      "type": "object",
+      "required": ["id", "target_focus", "summary"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "target_focus": { "type": "string" },
+        "summary": { "type": "string" }
+      }
+    },
+    "datedCredential": {
+      "type": "object",
+      "required": ["title", "issuing_organization", "start_date", "end_date"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string" },
+        "issuing_organization": { "type": "string" },
+        "start_date": { "type": "string" },
+        "end_date": { "type": ["string", "null"] }
+      }
+    },
+    "envelope": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" }
+      }
+    },
+    "projectEntry": {
+      "type": "object",
+      "required": ["title", "summary"],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "title": { "type": "null" },
+            "url": { "type": "null" },
+            "summary": { "type": "null" }
+          }
+        },
+        {
+          "properties": {
+            "title": { "type": "string", "minLength": 1 },
+            "url": { "type": "string", "minLength": 1 },
+            "summary": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "PROJECTS": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" }
+      },
+      "patternProperties": {
+        "^[1-9][0-9]*$": { "$ref": "#/$defs/projectEntry" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "required": ["id", "description"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string" },
+    "description": { "type": "string" },
+    "contact": { "$ref": "#/$defs/CONTACT" },
+    "education": { "$ref": "#/$defs/EDUCATION" },
+    "skills": { "$ref": "#/$defs/SKILLS" },
+    "professional_summary": { "$ref": "#/$defs/PROFESSIONAL_SUMMARY" },
+    "projects": { "$ref": "#/$defs/PROJECTS" }
+  }
+}

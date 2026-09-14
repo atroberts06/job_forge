@@ -1,0 +1,23 @@
+{
+  "titles": {
+    "include": ["architect"],
+    "exclude": ["intern"],
+    "match_mode": "any"
+  },
+  "locations": {
+    "include": ["NJ", "New Jersey", "New York", "NY", "NYC"],
+    "exclude": [],
+    "match_mode": "any"
+  },
+  "work_location_type": {
+    "include_remote": true,
+    "include_hybrid": true,
+    "include_onsite": false
+  },
+  "keywords": {
+    "include": [],
+    "exclude": [],
+    "match_mode": "any",
+    "apply_to": ["title", "description_text"]
+  }
+}

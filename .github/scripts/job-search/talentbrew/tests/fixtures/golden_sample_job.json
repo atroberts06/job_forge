@@ -1,0 +1,22 @@
+{
+  "id": "talentbrew:capital-one:96262041488",
+  "source_job_id": "96262041488",
+  "workday_requisition_id": "R244159",
+  "status": "new",
+  "title": "Senior Lead Information Security Consultant (AI)",
+  "company": "Capital One",
+  "location": "McLean, VA",
+  "work_location_type": "onsite",
+  "url": "https://www.capitalonecareers.com/job/mclean/senior-lead-information-security-consultant-ai/1732/96262041488",
+  "pulled_at": "2026-09-06",
+  "posted_at": "2026-09-04",
+  "raw": {
+    "org_id": "1732",
+    "category": "Cyber",
+    "experience": "Sr. Manager",
+    "primary_address": "McLean, Virginia | Plano, Texas | Richmond, Virginia",
+    "apply_url": "https://capitalone.wd12.myworkdayjobs.com/Capital_One/job/McLean-VA/Senior-Lead-Information-Security-Consultant--AI-_R244159-1/apply",
+    "date_posted_ld": "2026-9-4",
+    "html_remote_facet": "Not-Remote"
+  }
+}

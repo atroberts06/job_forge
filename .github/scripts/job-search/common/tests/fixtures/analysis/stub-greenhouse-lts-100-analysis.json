@@ -1,0 +1,31 @@
+{
+  "platform": "greenhouse",
+  "job_id": "greenhouse:lts:100",
+  "analysis_id": 0,
+  "updated_at": "2026-08-11T16:00:00Z",
+  "analyses": [
+    {
+      "analysis_id": 0,
+      "job_id": "greenhouse:lts:100",
+      "pull_date": "2026-08-11",
+      "revision": 0,
+      "is_current": true,
+      "run_id": null,
+      "analyzed_at": null,
+      "decision": null,
+      "justification": null,
+      "experience": { "requirements": [] },
+      "skills": { "requirements": [] },
+      "constraints": { "requirements": [] },
+      "external_context": { "decision_impact": "none", "sources": [] },
+      "started_at": null,
+      "ended_at": null,
+      "tokens_in": null,
+      "tokens_out": null,
+      "cache_tokens_in": null,
+      "thinking_tokens": null,
+      "context_usage_percent": null,
+      "context_metric_status": "not_programmatically_available"
+    }
+  ]
+}

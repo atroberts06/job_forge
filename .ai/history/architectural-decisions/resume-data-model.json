@@ -1,0 +1,260 @@
+{
+  "id": "resume_model_001",
+  "version": "2.4.0",
+  "created_on": "2026-07-15T16:30:00Z",
+  "modified_on": "2026-09-10T16:00:00Z",
+  "description": "Human-readable join contract for resume section objects. Each section is a separate locked file related by ID. fill_resume.py gathers these objects, validates foreign keys, and fills locked-resume-template.docx by discovering {{TOKENS}} and resolving them by naming convention (ADR-021, ADR-049, ADR-052). After filling, it prints an advisory last-page fill estimate via page_fill.py (ADR-051). This file is documentation, not a nested resume instance.",
+  "layout_source_of_truth": ".ai/guardrails/locked-resume-template.docx",
+  "fact_conflict_precedence": [
+    ".ai/guardrails/locked-resume-master-template.md",
+    ".ai/guardrails/locked-job-history.json"
+  ],
+  "excluded_from_fill": {
+    "path": ".ai/guardrails/locked-job-search-criteria.json",
+    "notes": "Job-search puller filters only. fill_resume.py must not read this file. target_focus and summary are not stored here."
+  },
+  "identity_rules": {
+    "parent": "contact",
+    "notes": "Contact is the parent object. Child sections are related only through foreign keys on contact. Do not embed child objects inside contact. Do not put contact_id on child files."
+  },
+  "relationships": {
+    "contact.education_id": "education.id",
+    "contact.skills_id": "skills.id",
+    "contact.job_history_id": "job_history.id",
+    "contact.professional_summary_id": "professional_summary.id",
+    "contact.projects_id": "projects.id"
+  },
+  "fill_resume": {
+    "script": "scripts/resume-docx/fill_resume.py",
+    "cli": "python scripts/resume-docx/fill_resume.py --sandbox .ai/history/resume-tailor/{company}/{position}",
+    "load_order": [
+      ".ai/history/architectural-decisions/resume-data-model.json",
+      ".ai/guardrails/locked-contact.json",
+      ".ai/guardrails/locked-education.json",
+      ".ai/guardrails/locked-skills.json",
+      ".ai/guardrails/locked-job-history.json",
+      ".ai/guardrails/locked-professional-summary.json",
+      ".ai/guardrails/locked-projects.json",
+      ".ai/guardrails/locked-resume-template.docx",
+      "sandbox tailored-resume.md"
+    ],
+    "abort_rules": [
+      "Abort if any required section object or required field is missing.",
+      "Abort if contact.education_id does not equal education.id.",
+      "Abort if contact.skills_id does not equal skills.id.",
+      "Abort if contact.job_history_id does not equal job_history.id.",
+      "Abort if contact.professional_summary_id does not equal professional_summary.id.",
+      "Abort if contact.projects_id does not equal projects.id.",
+      "Abort if any projects digit-key entry has only one of title or summary populated.",
+      "Abort unless tailored-resume.md role headers are the consecutive master-template prefix 1..N with N in 5-10. No skipping, reordering, or arbitrary title matching.",
+      "Abort if locked keys 11-12 appear on the resume.",
+      "Abort if tailored-resume.md bullet count per included role is outside 1-5.",
+      "Abort if any printed bullet is missing a non-empty theme before the first colon.",
+      "Abort if a template token names an unknown object or field.",
+      "Never write to .ai/guardrails/ during a normal resume-tailor run."
+    ],
+    "token_grammar": {
+      "adr": "ADR-021",
+      "notes": "fill_resume.py discovers {{TOKENS}} in locked-resume-template.docx. It does not keep a hardcoded field map. Uppercase token bodies casefold, then split on underscore. Longest join-contract object prefix wins so PROFESSIONAL_SUMMARY_SUMMARY binds to professional_summary.summary.",
+      "locked_scalar": "{{OBJECT_FIELD}} binds to bundles[object][field] (e.g. {{CONTACT_FIRST_NAME}}, {{EDUCATION_INSTITUTION}}, {{PROFESSIONAL_SUMMARY_SUMMARY}}).",
+      "locked_indexed": "{{OBJECT_INDEX_FIELD}} on job_history uses the digit key ({{JOB_HISTORY_5_TITLE}} -> job_history[\"5\"].title), not the fifth tailored ## block.",
+      "locked_array": "{{OBJECT_ARRAYFIELD_INDEX_FIELD}} is 1-based ({{CONTACT_LINKS_1_URL}} -> contact.links[0].url).",
+      "projects_alias": "{{PROJECTS_N_TITLE}} binds to projects[\"N\"].title. {{PROJECTS_N_SUMMERY}} is an intentional spelling alias of projects[\"N\"].summary (ADR-052). The locked Word template exposes only N=1. Later digit keys are analysis-only until a future layout change. Do not put a Projects section in tailored-resume.md.",
+      "projects_omission": "When projects[\"1\"].title and projects[\"1\"].summary are both null or blank, fill_resume.py removes the static Projects heading and both project-1 paragraphs. {{PROJECTS_N_URL}} binds to projects[\"N\"].url. Partial data on any digit key aborts. Empty paragraphs are not enough: the heading has no token and must be removed with the block.",
+      "overlay_skills": "{{SKILL_NN}} is the ranked list from sandbox tailored-resume.md, not locked-skills.json.",
+      "overlay_bullets": "{{JOB_HISTORY_N_BN}} is the Nth consecutive printed role (master prefix 1..N). Not role accomplishments. Word bolds the theme through the first colon (colon included).",
+      "unknown_token": "Unknown object or field aborts. No aliases for {{ROLE_*}}, {{EDU_*}}, {{SUMMARY}}, or {{CONTACT_LINK_URL}}.",
+      "missing_optional": "Missing optional slots (no links[1], no SKILL_40, unused B4/B5, unused printed keys N+1..10) fill as empty string. Empty paragraphs are removed. Keys 11-12 are never printed.",
+      "printed_prefix": "Default N=5. Deepen to the smallest N in 6..10 only when older locked evidence closes a JD required or preferred gap. Existing five-role sandboxes remain valid."
+    },
+    "output": "sandbox John_Doe_Resume_{Company_Title_Case}.docx",
+    "page_fill_estimate": {
+      "adr": "ADR-051",
+      "module": "scripts/resume-docx/page_fill.py",
+      "notes": "Advisory only. After writing the docx, fill_resume.py prints a last-page fill line (e.g. 'last page ~42% full across 3 page(s) (target >=75% usable)'). Deterministic and approximate: reads section page_height minus top/bottom margins as usable height, estimates wrapped-line height per paragraph from the body table row/cell widths (regular-weight twip map for body bullets, bold map for headers), and returns (page_count, last_page_fill_ratio). Never edits the docx and never fails the fill or CI.",
+      "contract": "Target 75% of usable last-page height; the resume-tailor SKILL re-evaluates only when N>5 and the estimate is below ~65% (tolerance band). Remedy is gap-only: add locked JD-gap-closing evidence (bullet on a printed role, then next master role) until >=~75% or evidence is exhausted, then ship and log."
+    }
+  },
+  "contact": {
+    "locked_file": ".ai/guardrails/locked-contact.json",
+    "adr": "ADR-016",
+    "required_fields": [
+      "id",
+      "first_name",
+      "last_name",
+      "email",
+      "phone",
+      "city",
+      "state",
+      "postal_code",
+      "country",
+      "links",
+      "education_id",
+      "skills_id",
+      "job_history_id",
+      "professional_summary_id",
+      "projects_id"
+    ],
+    "field_notes": {
+      "id": "Contact identity key (e.g. con_001).",
+      "postal_code": "ZIP used in the Word header as city, ST ZIP.",
+      "links": "Array of {platform, url}. May be empty. {{CONTACT_LINKS_1_URL}} is contact.links[0].url (1-based). Missing indexes fill as empty string.",
+      "education_id": "FK to education.id. Do not nest the education object.",
+      "skills_id": "FK to skills.id. Do not nest the skills object.",
+      "job_history_id": "FK to job_history.id. Do not nest roles.",
+      "professional_summary_id": "FK to professional_summary.id. Do not nest summary text.",
+      "projects_id": "FK to projects.id. Do not nest the projects object. Projects has no contact_id."
+    },
+    "example": {
+      "id": "con_001",
+      "first_name": "John",
+      "last_name": "Doe",
+      "email": "john.doe@example.com",
+      "phone": "555-555-5555",
+      "city": "New York",
+      "state": "NY",
+      "postal_code": "10001",
+      "country": "US",
+      "links": [
+        {
+          "platform": "LinkedIn",
+          "url": "https://linkedin.com/in/john-doe"
+        }
+      ],
+      "education_id": "edu_001",
+      "skills_id": "skl_001",
+      "job_history_id": "jh_001",
+      "professional_summary_id": "ps_001",
+      "projects_id": "prj_001"
+    }
+  },
+  "education": {
+    "locked_file": ".ai/guardrails/locked-education.json",
+    "adr": "ADR-017",
+    "related_by": "contact.education_id",
+    "required_fields": [
+      "id",
+      "institution",
+      "location",
+      "degree",
+      "end_date"
+    ],
+    "field_notes": {
+      "id": "Education identity key (e.g. edu_001).",
+      "end_date": "Graduation month/year as MM/YYYY."
+    },
+    "example": {
+      "id": "edu_001",
+      "institution": "University of Technology",
+      "location": "New York, NY",
+      "degree": "B.S. Computer Science",
+      "end_date": "5/2015"
+    }
+  },
+  "skills": {
+    "locked_file": ".ai/guardrails/locked-skills.json",
+    "adr": "ADR-018",
+    "related_by": "contact.skills_id",
+    "former_path": ".ai/guardrails/locked-profile.json",
+    "required_fields": [
+      "id",
+      "selected_skills",
+      "all_skills"
+    ],
+    "field_notes": {
+      "id": "Skills identity key (e.g. skl_001). Flattened; no numeric wrapper key.",
+      "selected_skills": "Preferred skill vocabulary for resume-tailor ranking.",
+      "all_skills": "Full locked skill vocabulary. Use only when a JD skill is absent from selected_skills.",
+      "dropped_fields": "target_focus and summary moved to professional_summary (ADR-019)."
+    }
+  },
+  "professional_summary": {
+    "locked_file": ".ai/guardrails/locked-professional-summary.json",
+    "adr": "ADR-019",
+    "related_by": "contact.professional_summary_id",
+    "required_fields": [
+      "id",
+      "target_focus",
+      "summary"
+    ],
+    "field_notes": {
+      "id": "Professional summary identity key (e.g. ps_001).",
+      "target_focus": "Positioning headline. Stored on this object; not rendered in locked-resume-template.docx.",
+      "summary": "Professional summary paragraph. Word placeholder {{PROFESSIONAL_SUMMARY_SUMMARY}}.",
+      "notes": "Strings are copied exactly from the former locked-profile.json. fill_resume.py reads this file; {{PROFESSIONAL_SUMMARY_SUMMARY}} binds to summary. {{PROFESSIONAL_SUMMARY_TARGET_FOCUS}} would bind if added to the template."
+    }
+  },
+  "projects": {
+    "locked_file": ".ai/guardrails/locked-projects.json",
+    "adr": "ADR-052",
+    "related_by": "contact.projects_id",
+    "required_fields": [
+      "id"
+    ],
+    "entry_key_rule": "Digit-only keys (\"1\", \"2\", ...) are projects. Ignore id when iterating entries. Do not convert numeric keys into a JSON array.",
+    "entry_required_fields": [
+      "title",
+      "summary"
+    ],
+    "entry_optional_fields": [
+      "url"
+    ],
+    "field_notes": {
+      "id": "Envelope identity key (e.g. prj_001) as a sibling of numeric project keys.",
+      "title": "Project title. Null together with summary at deploy. Do not invent.",
+      "url": "Project URL. JSON field is url. Word placeholder {{PROJECTS_1_URL}} is the intentional alias.",
+      "summary": "Project summary. JSON field is summary. Word placeholder {{PROJECTS_1_SUMMERY}} is the intentional alias.",
+      "paired_fields": "Each digit-key entry must populate both title and summary or neither (both null). Partial data aborts fill.",
+      "printed_slot": "locked-resume-template.docx prints only key \"1\" between Education and Skills. Later keys are valid evidence for job analysis (capability/technology only; never employment tenure).",
+      "section_removal": "When key \"1\" is unpopulated, the Projects heading and both project-1 paragraphs are removed entirely."
+    },
+    "example": {
+      "id": "prj_001",
+      "1": {
+        "title": null,
+        "summary": null
+      }
+    }
+  },
+  "job_history": {
+    "locked_file": ".ai/guardrails/locked-job-history.json",
+    "adr": "ADR-020",
+    "related_by": "contact.job_history_id",
+    "required_fields": [
+      "id"
+    ],
+    "role_key_rule": "Digit-only keys (\"1\"...\"12\") are roles. Ignore id when iterating positions. Do not convert numeric role keys into a JSON array.",
+    "role_required_fields": [
+      "title",
+      "company",
+      "location",
+      "start_date",
+      "end_date"
+    ],
+    "role_optional_fields": [
+      "focus_narrative",
+      "mapped_skills",
+      "accomplishments"
+    ],
+    "field_notes": {
+      "id": "Envelope identity key (e.g. jh_001) as a sibling of numeric role keys.",
+      "title": "Locked position title. Do not invent or rename.",
+      "company": "Locked employer name.",
+      "start_date": "Role start as M/YYYY or MM/YYYY as stored.",
+      "end_date": "Role end as M/YYYY, MM/YYYY, or Present as stored."
+    }
+  },
+  "layout": {
+    "locked_file": ".ai/guardrails/locked-resume-template.docx",
+    "adr": "ADR-015",
+    "notes": "Layout only. Ten Word slots (JOB_HISTORY_1..JOB_HISTORY_10). Right column order is Education, optional Projects, then Skills (ADR-052). Placeholders bind to data-model fields by naming convention (ADR-021). Per-job bullets and skill ranking come from sandbox tailored-resume.md. Printed output is the consecutive prefix 1..N (ADR-049)."
+  },
+  "placeholders": {
+    "contact": ["{{CONTACT_FIRST_NAME}}", "{{CONTACT_LAST_NAME}}", "{{CONTACT_EMAIL}}", "{{CONTACT_PHONE}}", "{{CONTACT_CITY}}", "{{CONTACT_STATE}}", "{{CONTACT_POSTAL_CODE}}", "{{CONTACT_COUNTRY}}", "{{CONTACT_LINKS_1_URL}}"],
+    "education": ["{{EDUCATION_INSTITUTION}}", "{{EDUCATION_LOCATION}}", "{{EDUCATION_DEGREE}}", "{{EDUCATION_END_DATE}}"],
+    "professional_summary": ["{{PROFESSIONAL_SUMMARY_SUMMARY}}"],
+    "job_history": ["{{JOB_HISTORY_N_TITLE}}", "{{JOB_HISTORY_N_COMPANY}}", "{{JOB_HISTORY_N_LOCATION}}", "{{JOB_HISTORY_N_START_DATE}}", "{{JOB_HISTORY_N_END_DATE}}", "{{JOB_HISTORY_N_B1}}", "{{JOB_HISTORY_N_B2}}", "{{JOB_HISTORY_N_B3}}", "{{JOB_HISTORY_N_B4}}", "{{JOB_HISTORY_N_B5}}"],
+    "projects": ["{{PROJECTS_1_TITLE}}", "{{PROJECTS_1_URL}}", "{{PROJECTS_1_SUMMARY}}"],
+    "skills": ["{{SKILL_NN}}"]
+  }
+}

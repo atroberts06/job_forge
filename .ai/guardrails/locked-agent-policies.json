@@ -1,0 +1,33 @@
+{
+  "policies": [
+    {
+      "id": "job_analysis_policy_001",
+      "execution": {
+        "default_mode": "sequential",
+        "max_jobs_per_agent": 2,
+        "fresh_agent_per_batch": true
+      },
+      "research": {
+        "max_web_searches_per_job": 5,
+        "max_web_fetches_per_job": 3
+      },
+      "parallel": {
+        "max_parallel_agents": 2,
+        "parallel_requires_confirmation": true,
+        "parallel_declined_behavior": "sequential"
+      }
+    },
+    {
+      "id": "resume_tailor_policy_001",
+      "execution": {
+        "default_mode": "sequential",
+        "max_jobs_per_agent": 2,
+        "fresh_agent_per_batch": true
+      },
+      "research": {
+        "max_web_searches_per_job": 5,
+        "max_web_fetches_per_job": 3
+      }
+    }
+  ]
+}

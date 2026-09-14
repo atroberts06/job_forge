@@ -1,0 +1,433 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "JobSearchDataModel",
+  "description": "Architectural source of truth for job-search instance files. Validators select $defs by path: jobs.json → PULL_FILE, approved-jobs.json → APPROVED_JOBS, analyses/*-analysis.json → ANALYSIS_FILE, companies.json → COMPANIES_FILE. Root remains PULL_FILE for jobs.json compatibility. No persisted kind field.",
+  "$defs": {
+    "jobStatus": {
+      "type": "string",
+      "enum": ["new", "active", "closed"],
+      "description": "Presence status on dated jobs.json. Qualification approved|rejected lives on sidecar decision. Queue execution is a separate enum."
+    },
+    "workLocationType": {
+      "type": "string",
+      "enum": ["remote", "hybrid", "onsite", "unknown"],
+      "description": "Work arrangement signal. Sole arrangement field; replaces the former remote boolean."
+    },
+    "job": {
+      "type": "object",
+      "required": [
+        "id",
+        "source_job_id",
+        "status",
+        "title",
+        "company",
+        "location",
+        "work_location_type",
+        "url",
+        "pulled_at",
+        "posted_at",
+        "status_updated_at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Globally unique identifier: {platform}:{board_token}:{source_job_id}."
+        },
+        "source_job_id": {
+          "type": "string",
+          "description": "Native job id from the source ATS."
+        },
+        "status": { "$ref": "#/$defs/jobStatus" },
+        "title": { "type": "string", "description": "Position / job title." },
+        "company": { "type": "string", "description": "Employer display name." },
+        "location": { "type": "string", "description": "Best-effort location string from the source." },
+        "work_location_type": { "$ref": "#/$defs/workLocationType" },
+        "url": { "type": "string", "format": "uri", "description": "Absolute apply or hosted job URL." },
+        "pulled_at": { "type": "string", "description": "Calendar date of the daily pull (YYYY-MM-DD)." },
+        "posted_at": {
+          "description": "Source listing post date as YYYY-MM-DD, or null when unknown/unparseable.",
+          "anyOf": [
+            { "type": "null" },
+            { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
+          ]
+        },
+        "status_updated_at": { "type": "string", "format": "date-time", "description": "ISO timestamp when presence status last changed." },
+        "description_text": { "type": "string", "description": "Plain-text job description for matching/audit." },
+        "raw": { "type": "object", "description": "Optional truncated raw ATS object for audit." },
+        "workday_requisition_id": {
+          "description": "Workday requisition (R plus digits) for TalentBrew company-slot rows. Omit on greenhouse/serpapi. Never use as listing identity.",
+          "anyOf": [
+            { "type": "null" },
+            { "type": "string", "pattern": "^R[0-9]+$" }
+          ]
+        }
+      }
+    },
+    "PULL_FILE": {
+      "type": "object",
+      "required": ["platform", "pulled_at", "jobs"],
+      "additionalProperties": false,
+      "properties": {
+        "platform": { "type": "string", "description": "ATS or aggregator platform key (e.g., greenhouse)." },
+        "pulled_at": { "type": "string", "format": "date-time", "description": "ISO timestamp when the daily pull completed." },
+        "jobs": {
+          "type": "array",
+          "description": "Normalized job listings for this pull. Today's file is live listings only (new|active).",
+          "items": { "$ref": "#/$defs/job" }
+        }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "required": ["code", "message", "failed_at", "step"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": ["collision", "tailor_preflight", "tailor_skill", "validate", "git", "pr_create", "unknown"]
+        },
+        "message": { "type": "string" },
+        "failed_at": { "type": "string", "format": "date-time" },
+        "step": { "type": "string" }
+      }
+    },
+    "approvedJob": {
+      "type": "object",
+      "required": [
+        "id",
+        "analysis_id",
+        "approved_at",
+        "status",
+        "status_updated_at",
+        "started_at",
+        "attempt_count",
+        "completed_at",
+        "sandbox_path",
+        "feature_branch",
+        "pr_number",
+        "pr_url"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "description": "JOB.id. Locate sidecar from platform folder plus encoded job_id." },
+        "analysis_id": { "type": "integer", "description": "FK to sidecar analyses[].analysis_id. Integer; 0 is a real id." },
+        "approved_at": { "type": "string", "format": "date-time" },
+        "status": {
+          "type": "string",
+          "enum": ["approved", "in_progress", "failed", "completed", "deployed"],
+          "description": "Resume-tailor execution status. Not jobs.json presence status. deployed = PR merged and Drive upload succeeded."
+        },
+        "status_updated_at": { "type": "string", "format": "date-time" },
+        "started_at": { "type": ["string", "null"], "format": "date-time" },
+        "attempt_count": { "type": ["integer", "null"], "minimum": 0 },
+        "completed_at": { "type": ["string", "null"], "format": "date-time" },
+        "sandbox_path": { "type": ["string", "null"] },
+        "feature_branch": { "type": ["string", "null"] },
+        "pr_number": { "type": ["integer", "null"] },
+        "pr_url": { "type": ["string", "null"], "format": "uri" },
+        "artifacts_url": { "type": "string", "format": "uri", "description": "Google Drive {company}/{role} folder URI. CD stamps after Drive sync; empty until deployed." },
+        "failure": { "$ref": "#/$defs/failure" },
+        "notes": { "type": "string" }
+      }
+    },
+    "APPROVED_JOBS": {
+      "type": "object",
+      "required": ["platform", "jobs"],
+      "additionalProperties": false,
+      "properties": {
+        "platform": { "type": "string" },
+        "jobs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/approvedJob" }
+        }
+      }
+    },
+    "requirement": {
+      "type": "object",
+      "required": [
+        "jd_excerpt",
+        "normalized",
+        "source_section",
+        "importance",
+        "result",
+        "evidence",
+        "note"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "jd_excerpt": { "type": "string" },
+        "normalized": { "type": "string" },
+        "source_section": { "type": "string" },
+        "importance": { "type": "string", "enum": ["mandatory", "preferred"] },
+        "result": { "type": "string", "enum": ["met", "partial", "not_evidenced", "contradicted"] },
+        "evidence": { "type": "string" },
+        "note": { "type": "string" }
+      }
+    },
+    "requirementSection": {
+      "type": "object",
+      "required": ["requirements"],
+      "additionalProperties": false,
+      "properties": {
+        "requirements": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/requirement" }
+        }
+      }
+    },
+    "externalSource": {
+      "type": "object",
+      "required": ["url", "accessed_at"],
+      "additionalProperties": false,
+      "properties": {
+        "url": { "type": "string" },
+        "accessed_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "externalContext": {
+      "type": "object",
+      "required": ["decision_impact", "sources"],
+      "additionalProperties": false,
+      "properties": {
+        "decision_impact": { "type": "string", "enum": ["none"] },
+        "sources": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/externalSource" }
+        }
+      }
+    },
+    "coreThemes": {
+      "type": "object",
+      "required": [
+        "strength_1",
+        "strength_2",
+        "strength_3",
+        "job_skill_1",
+        "job_skill_2",
+        "job_skill_3",
+        "opening_hook"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "strength_1": { "type": "string" },
+        "strength_2": { "type": "string" },
+        "strength_3": { "type": "string" },
+        "job_skill_1": { "type": "string" },
+        "job_skill_2": { "type": "string" },
+        "job_skill_3": { "type": "string" },
+        "opening_hook": { "type": "string" }
+      },
+      "description": "Shared resume and cover-letter alignment slots synthesized at analysis time (ADR-053). Optional on ANALYSIS rows for backward compatibility with pull stubs and historical fills."
+    },
+    "analysis": {
+      "type": "object",
+      "required": [
+        "analysis_id",
+        "job_id",
+        "pull_date",
+        "revision",
+        "is_current",
+        "run_id",
+        "analyzed_at",
+        "decision",
+        "justification",
+        "experience",
+        "skills",
+        "constraints",
+        "external_context",
+        "started_at",
+        "ended_at",
+        "tokens_in",
+        "tokens_out",
+        "cache_tokens_in",
+        "thinking_tokens",
+        "context_usage_percent",
+        "context_metric_status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "analysis_id": { "type": "integer", "description": "Unique inside the file. Stub 0 is a real id." },
+        "job_id": { "type": "string" },
+        "pull_date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "revision": { "type": "integer" },
+        "is_current": { "type": "boolean" },
+        "run_id": { "type": ["string", "null"], "description": "Queue envelope run_id copied at fill. Not P2-A1 telemetry." },
+        "analyzed_at": { "type": ["string", "null"], "format": "date-time" },
+        "decision": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "string", "enum": ["approved", "rejected"] }
+          ]
+        },
+        "justification": { "type": ["string", "null"] },
+        "experience": { "$ref": "#/$defs/requirementSection" },
+        "skills": { "$ref": "#/$defs/requirementSection" },
+        "constraints": { "$ref": "#/$defs/requirementSection" },
+        "external_context": { "$ref": "#/$defs/externalContext" },
+        "core_themes": { "$ref": "#/$defs/coreThemes" },
+        "started_at": { "type": ["string", "null"], "format": "date-time" },
+        "ended_at": { "type": ["string", "null"], "format": "date-time" },
+        "tokens_in": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "integer", "minimum": 0 }
+          ]
+        },
+        "tokens_out": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "integer", "minimum": 0 }
+          ]
+        },
+        "cache_tokens_in": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "integer", "minimum": 0 }
+          ]
+        },
+        "thinking_tokens": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "integer", "minimum": 0 }
+          ]
+        },
+        "context_usage_percent": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "number", "minimum": 0, "maximum": 100 }
+          ]
+        },
+        "context_metric_status": {
+          "type": "string",
+          "enum": ["not_programmatically_available", "observed"]
+        }
+      }
+    },
+    "ANALYSIS_FILE": {
+      "type": "object",
+      "required": ["platform", "job_id", "analysis_id", "updated_at", "analyses"],
+      "additionalProperties": false,
+      "properties": {
+        "platform": { "type": "string" },
+        "job_id": { "type": "string", "description": "Unsanitized JOB.id. File PK." },
+        "analysis_id": { "type": "integer", "description": "FK to the unique is_current analyses[] row. Stub 0." },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "analyses": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/analysis" }
+        }
+      }
+    },
+    "companySource": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "platform",
+        "board_token",
+        "career_url",
+        "source",
+        "detected_at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "platform": {
+          "type": "string",
+          "description": "On ats: greenhouse|lever|ashby|unknown, or empty when unpopulated. On company: parent id."
+        },
+        "board_token": { "type": "string" },
+        "career_url": {
+          "type": "string",
+          "description": "Board or careers URL. Empty string allowed. On ats: first-fill only when the URL contains both platform and board_token. On company: first-fill scheme://host only when that origin contains a distinctive part of the employer name. Never overwrite a populated career_url."
+        },
+        "source": {
+          "type": "string",
+          "enum": ["", "manual", "serpapi", "greenhouse_discovery"],
+          "description": "How this slot was filled. Empty string is the default (unwritten). serpapi is stamped on SerpApi first-fill and then locked. greenhouse_discovery is stamped by Greenhouse discovery. manual is reserved for user-entered companies. Scripts never overwrite a non-empty source; a user may edit it by hand."
+        },
+        "detected_at": {
+          "description": "Calendar date (YYYY-MM-DD) when this slot was first written, or null if the slot is unpopulated.",
+          "anyOf": [
+            { "type": "null" },
+            { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
+          ]
+        }
+      }
+    },
+    "catalogCompany": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "company_url",
+        "industries",
+        "ats",
+        "company"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "description": "Kebab-case company slug. Unique in the file."
+        },
+        "name": { "type": "string", "minLength": 1 },
+        "company_url": {
+          "type": "string",
+          "description": "Corporate homepage. Empty string allowed."
+        },
+        "industries": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "Industry tags for later vertical/horizontal discovery. Empty array is untagged. Pull does not filter on this field.",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "ats": { "$ref": "#/$defs/companySource" },
+        "company": { "$ref": "#/$defs/companySource" }
+      }
+    },
+    "COMPANIES_FILE": {
+      "type": "object",
+      "required": ["companies"],
+      "additionalProperties": false,
+      "properties": {
+        "companies": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/catalogCompany" }
+        }
+      }
+    },
+    "CRITERIA_FILE": {
+      "type": "object",
+      "required": ["criteria"],
+      "additionalProperties": false,
+      "properties": {
+        "criteria": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Per-pipeline search criteria rows. Pullers load by id.",
+          "items": {
+            "type": "object",
+            "required": ["id", "pipeline", "created_on", "modified_on", "description"],
+            "additionalProperties": true,
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "pipeline": { "type": "string", "minLength": 1 },
+              "created_on": { "type": "string", "format": "date-time" },
+              "modified_on": { "type": "string", "format": "date-time" },
+              "description": { "type": "string" },
+              "max_searches": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "SerpApi billed-search cap for this pipeline row (jsc_002). One successful google_jobs HTTP request is one search, including pagination. Not a cap on jobs kept. Required on pipeline=google_jobs; omitted on greenhouse."
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [{ "$ref": "#/$defs/PULL_FILE" }]
+}

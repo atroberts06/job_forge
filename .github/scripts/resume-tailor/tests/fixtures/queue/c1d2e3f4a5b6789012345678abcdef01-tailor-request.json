@@ -1,0 +1,40 @@
+{
+  "run_id": "c1d2e3f4a5b6789012345678abcdef01",
+  "batch_number": 1,
+  "platform": "greenhouse",
+  "created_date": "2026-08-30",
+  "jobs": [
+    {
+      "id": "greenhouse:lts:100",
+      "status": "pending",
+      "company": "LTS",
+      "title": "Solution Architect",
+      "company_slug": "lts",
+      "position_slug": "solution-architect-100",
+      "location": "New York, NY",
+      "url": "https://job-boards.greenhouse.io/lts/jobs/100",
+      "description_text": "Architect Salesforce and CI/CD.",
+      "decision": "approved",
+      "justification": "Locked skills evidence Salesforce and enterprise architecture.",
+      "unmet_mandatory": [],
+      "mentioned_skills": [
+        {
+          "jd_excerpt": "Salesforce platform experience",
+          "normalized": "Salesforce",
+          "source_section": "Requirements",
+          "importance": "preferred",
+          "result": "met",
+          "evidence": "Salesforce Education Cloud in selected skills.",
+          "note": "Named platform evidenced in locked-skills.json."
+        }
+      ],
+      "started_at": null,
+      "attempt_count": null,
+      "completed_at": null,
+      "pr_url": null,
+      "pr_number": null,
+      "sandbox_path": null,
+      "feature_branch": null
+    }
+  ]
+}

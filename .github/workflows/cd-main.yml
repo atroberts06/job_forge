@@ -1,0 +1,272 @@
+name: CD Main
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Validate guardrail JSON
+        run: python scripts/ci/validate_guardrails_json.py
+
+      - name: Validate resume-tailor artifacts and chronology
+        run: python scripts/ci/validate_resume_tailor_artifacts.py --base HEAD~1
+
+      - name: Detect job-search changes
+        id: job_search
+        run: |
+          set -euo pipefail
+          CHANGED=$(git diff --name-only HEAD~1 || true)
+          MATCH=$(echo "${CHANGED}" | grep -E \
+            -e '^\.github/scripts/job-search/' \
+            -e '^\.github/workflows/job-search-pull\.yml$' \
+            -e '^\.ai/guardrails/locked-job-search-' \
+            -e '^\.ai/guardrails/locked-job-data-model\.json$' \
+            -e '^\.ai/guardrails/locked-agent-policies\.json$' \
+            -e '^\.github/scripts/resume-tailor/' \
+            -e '^\.cursor/skills/job-analysis/' \
+            -e '^\.cursor/skills/job-orchestrator/' \
+            -e '^scripts/ci/' \
+            -e '^\.ai/history/job-search/companies\.json$' \
+            -e '^\.ai/history/job-search/.+/jobs\.json$' \
+            -e '^\.ai/history/job-search/.+/approved-jobs\.json$' \
+            -e '^\.ai/history/job-search/.+/analyses/.+-analysis\.json$' \
+            || true)
+          if [ -n "${MATCH}" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Job-search paths changed:"
+            echo "${MATCH}"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No job-search path changes."
+          fi
+
+      - name: Detect resume-docx changes
+        id: resume_docx
+        run: |
+          set -euo pipefail
+          CHANGED=$(git diff --name-only HEAD~1 || true)
+          MATCH=$(echo "${CHANGED}" | grep -E \
+            -e '^scripts/resume-docx/' \
+            -e '^\.ai/guardrails/locked-resume-template\.docx$' \
+            -e '^\.ai/guardrails/locked-resume-master-template\.md$' \
+            -e '^\.cursor/skills/resume-tailor/' \
+            -e '^\.cursor/rules/formatting-rules\.mdc$' \
+            -e '^scripts/ci/' \
+            || true)
+          if [ -n "${MATCH}" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Resume-docx paths changed:"
+            echo "${MATCH}"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No resume-docx path changes."
+          fi
+
+      - name: Detect cover-letter-docx changes
+        id: cover_letter_docx
+        run: |
+          set -euo pipefail
+          CHANGED=$(git diff --name-only HEAD~1 || true)
+          MATCH=$(echo "${CHANGED}" | grep -E \
+            -e '^scripts/cover-letter-docx/' \
+            -e '^\.ai/guardrails/locked-cover-letter-template\.docx$' \
+            -e '^\.ai/guardrails/locked-cover-letter-template\.md$' \
+            || true)
+          if [ -n "${MATCH}" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Cover-letter-docx paths changed:"
+            echo "${MATCH}"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No cover-letter-docx path changes."
+          fi
+
+      - name: Install job-search test dependencies
+        if: steps.job_search.outputs.changed == 'true'
+        run: pip install -r .github/scripts/job-search/common/requirements.txt
+
+      - name: Run job-search unit tests
+        if: steps.job_search.outputs.changed == 'true'
+        run: python -m pytest .github/scripts/job-search -q
+
+      - name: Run resume-tailor queue unit tests
+        if: steps.job_search.outputs.changed == 'true'
+        run: python -m pytest .github/scripts/resume-tailor/tests -q
+
+      - name: Install resume-docx test dependencies
+        if: steps.resume_docx.outputs.changed == 'true'
+        run: pip install -r scripts/resume-docx/requirements.txt
+
+      - name: Run resume-docx unit tests
+        if: steps.resume_docx.outputs.changed == 'true'
+        run: python -m pytest scripts/resume-docx/tests -q
+
+      - name: Install cover-letter-docx test dependencies
+        if: steps.cover_letter_docx.outputs.changed == 'true'
+        run: pip install -r scripts/cover-letter-docx/requirements.txt
+
+      - name: Run cover-letter-docx unit tests
+        if: steps.cover_letter_docx.outputs.changed == 'true'
+        run: python -m pytest scripts/cover-letter-docx/tests -q
+
+      - name: Run CI helper unit tests
+        if: steps.job_search.outputs.changed == 'true' || steps.resume_docx.outputs.changed == 'true' || steps.cover_letter_docx.outputs.changed == 'true'
+        run: python -m pytest scripts/ci/tests -q
+
+      - name: Validate changed jobs.json files
+        if: steps.job_search.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          FILES=$(git diff --name-only HEAD~1 | grep -E '^\.ai/history/job-search/.+/jobs\.json$' || true)
+          if [ -z "${FILES}" ]; then
+            echo "No jobs.json changes to validate."
+            exit 0
+          fi
+          while IFS= read -r file; do
+            [ -z "${file}" ] && continue
+            [ -f "${file}" ] || continue
+            python .github/scripts/job-search/common/validate_jobs.py "${file}"
+          done <<< "${FILES}"
+
+      - name: Validate changed analysis files
+        if: steps.job_search.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          FILES=$(git diff --name-only HEAD~1 | grep -E '^\.ai/history/job-search/.+/analyses/.+-analysis\.json$' || true)
+          if [ -z "${FILES}" ]; then
+            echo "No analysis sidecar changes to validate."
+            exit 0
+          fi
+          while IFS= read -r file; do
+            [ -z "${file}" ] && continue
+            [ -f "${file}" ] || continue
+            python .github/scripts/job-search/common/validate_job_search.py "${file}"
+          done <<< "${FILES}"
+
+      - name: Validate changed approved-jobs.json files
+        if: steps.job_search.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          FILES=$(git diff --name-only HEAD~1 | grep -E '^\.ai/history/job-search/.+/approved-jobs\.json$' || true)
+          if [ -z "${FILES}" ]; then
+            echo "No approved-jobs.json changes to validate."
+            exit 0
+          fi
+          while IFS= read -r file; do
+            [ -z "${file}" ] && continue
+            [ -f "${file}" ] || continue
+            python .github/scripts/job-search/common/validate_job_search.py "${file}"
+          done <<< "${FILES}"
+
+      - name: Validate companies.json
+        if: steps.job_search.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          FILES=$(git diff --name-only HEAD~1 | grep -E '^\.ai/history/job-search/companies\.json$' || true)
+          if [ -z "${FILES}" ]; then
+            echo "No companies.json changes to validate."
+            exit 0
+          fi
+          python .github/scripts/job-search/common/validate_job_search.py ".ai/history/job-search/companies.json"
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Build resume-tailor manifest and stage deploy artifacts
+        run: python scripts/ci/build_resume_tailor_manifest.py --base HEAD~1 --commit-sha "${{ github.sha }}"
+
+      - name: Upload production artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-resume-tailor-artifacts
+          path: dist/
+          retention-days: 90
+
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    needs: build
+    environment: production
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Download production artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: production-resume-tailor-artifacts
+          path: dist/
+
+      - name: Install Google Drive dependencies
+        run: pip install -r scripts/ci/requirements.txt
+
+      - name: Install job-search validator dependencies
+        run: pip install -r .github/scripts/job-search/common/requirements.txt
+
+      - name: Sync artifacts to Google Drive
+        env:
+          GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+        run: python scripts/ci/sync_gdrive.py
+
+      - name: Stamp deployed ledger after Drive sync
+        run: python scripts/ci/stamp_deployed_ledger.py --from-sync dist/drive-sync-result.json
+
+      - name: Commit deployed ledger
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .ai/history/job-search/*/approved-jobs.json
+          if git diff --cached --quiet; then
+            echo "No ledger stamp to commit."
+            exit 0
+          fi
+          python .github/scripts/job-search/common/validate_job_search.py \
+            .ai/history/job-search/greenhouse/approved-jobs.json
+          git commit -m "chore(job-search): stamp deployed after Drive sync"
+          git push origin HEAD:main

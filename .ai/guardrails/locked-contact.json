@@ -1,0 +1,27 @@
+{
+  "id": "con_001",
+  "first_name": "John",
+  "last_name": "Doe",
+  "email": "john.doe@example.com",
+  "phone": "555-555-5555",
+  "city": "New York",
+  "state": "NY",
+  "postal_code": "10001",
+  "country": "US",
+  "work_authorization": ["US Citizen", "W-2"],
+  "mobility": ["NY Metro Area", "Willing to relocate", "< 25% travel"],
+  "links": [
+    {
+      "platform": "LinkedIn",
+      "url": "https://linkedin.com/in/john-doe"
+    }
+  ],
+  "education_id": "edu_001",
+  "skills_id": "skl_001",
+  "job_history_id": "jh_001",
+  "professional_summary_id": "ps_001",
+  "projects_id": "prj_001",
+  "certifications_id": "cert_001",
+  "clearance_id": "clr_001",
+  "licenses_id": "lic_001"
+}

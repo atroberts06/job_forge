@@ -1,0 +1,14 @@
+---
+globs: **/resume-tailor/*/*/*.md
+alwaysApply: false
+---
+# Formatting Standards (The What)
+- **Typography:** Use standard Markdown headings `##`, `###`. Avoid deeply nested lists. Bullets should start with standard markdown `-`. Do not output any code blocks or tags from source files or templates.
+- **Scannability:** No paragraph block should exceed 3 lines. Every role section should utilize bullet points that bold the theme through the first colon (colon included).
+- **No AI Tropes:** Ban the words: *spearheaded* (unless historically accurate), *testament*, *leveraged* (overuse), *delve*, *transformative*. Ban the use of semi colons and use periods instead. Limit the use of hyphenated words / phrases to only commonly hyphenated words (e.g. twenty-one, part-time, real-time, cloud-based, cross-platform).
+- **Repeated Word Use:** Limit the repeated usage of the same wording overall within the resume output file only. The same word or phrase can only be used twice maximum.
+- **Be Direct:** Limit the use of run-on sentences seperated by commas. Write breif, clear, concise and direct sentences. Do not use filler words to add "fluff".
+- **Output Formats:** 
+  - The formatting standards above do not apply to the generation of job-description.md.
+  - Standard Resume -> `.md` optimized for PDF rendering.
+  - Response Messages -> Single, cohesive message block with clear brackets `[ ]` for variables. All user-replaceable variables must use double-bracket notation [[ VARIABLE_NAME ]] to prevent collision with single-bracket markdown link syntax [Anchor](URL).

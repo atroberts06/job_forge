@@ -1,0 +1,28 @@
+---
+description: Core Project Architecture
+alwaysApply: true
+---
+
+# **Directory Structure Rules:**
+- `/.ai/` ➔ Framework, configurations and output data.
+- `/.ai/architectural-decisions/` ➔ Architectural history and user facing data model documentation.
+- `/.ai/defects/` ➔ Defect history for documenting and planning fixes.
+- `/.ai/guardrails/` ➔ **IMMUTABLE DATA ONLY.** Contains source of truth data structures, work history, configurable `job-search` criteria, and locked source ingestion templates. Strictly forbidden to modify, delete or copy any files in this directory (Read-Only to Agent).
+- `/.ai/history/resume-tailor/{company}/{position}/` ➔ Sandbox directory for `resume-tailor` (previously `.ai/history/epics/`; ADR-011).
+- `/.ai/history/resume-tailor/queue/` ➔ Gitignored `*-tailor-request.json` queue files (Phase 2 orchestrator).
+- `/.ai/history/job-search/` ➔ Sandbox directory for `job-search`.
+- `/.ai/history/orchestrator/` ➔ Sandbox directory for the job-orchestrator run log (`run.log` is gitignored; ADR-031).
+- `/.cursor/plans/` ➔ Contains agent plans. Used for architectural changes to the overall project structure.
+- `/.cursor/rules/` ➔ **IMMUTABLE DATA ONLY.** Contains agent rules. Strictly forbidden to add, modify, delete or copy any files in this directory (Read-Only to Agent).
+- `/.cursor/skills/` ➔ **IMMUTABLE DATA ONLY.** Contains agent workflows (human-maintained). Strictly forbidden to add, modify, delete or copy any files in this directory during normal agent runs (Read-Only to Agent).
+- `/.github/workflows/` ➔ Contains GitHub CI/CD action scripts.
+- `/scripts/` ➔ Contains various project scripts.
+
+**Installed Tools & CLI's** Never stray outside the existing toolkit
+- bash
+- powershell
+- git
+- pip
+- python
+- gh
+- mcp-server-office

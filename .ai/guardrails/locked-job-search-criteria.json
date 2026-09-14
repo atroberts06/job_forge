@@ -1,0 +1,178 @@
+{
+  "criteria": [
+    {
+      "id": "jsc_001",
+      "pipeline": "greenhouse",
+      "created_on": "2026-08-06T00:00:00Z",
+      "modified_on": "2026-08-11T00:00:00Z",
+      "description": "Locked cross-platform job search filter criteria. Single source of truth for all ATS/aggregator pullers.",
+      "titles": {
+        "include": [
+          "architect",
+          "analyst",
+          "solution architect",
+          "solutions architect",
+          "enterprise architect",
+          "integration architect",
+          "system architect",
+          "systems architect",
+          "engineer",
+          "system engineer",
+          "systems engineer",
+          "system analyst",
+          "systems analyst",
+          "team lead"
+        ],
+        "exclude": [
+          "intern"
+        ],
+        "match_mode": "any"
+      },
+      "locations": {
+        "include": [
+          "New York",
+          "NY",
+          "NYC"
+        ],
+        "exclude": [],
+        "match_mode": "any"
+      },
+      "work_location_type": {
+        "include_remote": true,
+        "include_hybrid": true,
+        "include_onsite": true
+      },
+      "keywords": {
+        "include": [],
+        "exclude": [],
+        "match_mode": "any",
+        "apply_to": ["title", "description_text"]
+      }
+    },
+    {
+      "id": "jsc_002",
+      "pipeline": "google_jobs",
+      "created_on": "2026-09-02T00:00:00Z",
+      "modified_on": "2026-09-05T00:00:00Z",
+      "description": "Google Jobs (SerpApi) search criteria.",
+      "search_query": {
+        "include": [
+          "team lead",
+          "solution architect",
+          "integration architect"
+        ]
+      },
+      "location": {
+        "include": []
+      },
+      "include_remote": false,
+      "max_searches": 6,
+      "country_code": "us",
+      "language_code": "en",
+      "google_domain": "",
+      "search_radius_kilometers": null,
+      "google_filter_token": "",
+      "industry_query": "",
+      "next_page_token": "",
+      "date_posted": "last_week",
+      "titles": { "include": [], "exclude": [], "match_mode": "any" },
+      "locations": { "include": [], "exclude": [], "match_mode": "any" },
+      "keywords": { "include": [], "exclude": [], "match_mode": "any", "apply_to": ["title", "description_text"] }
+    },
+    {
+      "id": "jsc_003",
+      "pipeline": "talentbrew",
+      "created_on": "2026-09-05T00:00:00Z",
+      "modified_on": "2026-09-05T00:00:00Z",
+      "description": "TalentBrew (company-slot) pull. All list/detail HTTP knobs live here; fetch_talentbrew_jobs.py must not hardcode page size, delay, retries, or TalentBrew query ints.",
+      "records_per_page": 100,
+      "search_keywords": null,
+      "search_location": null,
+      "search_type": 5,
+      "sort_criteria": 0,
+      "sort_direction": 0,
+      "distance": 50,
+      "radius_unit_type": 0,
+      "active_facet_id": 0,
+      "show_radius": false,
+      "timeout_seconds": 60,
+      "request_delay_ms": 1500,
+      "max_retries": 3,
+      "retry_status_codes": [429, 503],
+      "max_pages": null,
+      "facets": {
+        "teams": null,
+        "country": null,
+        "state": null,
+        "locations": null,
+        "divisions": null,
+        "students_and_grads": null,
+        "remote": null,
+        "sponsorship": null,
+        "role_type": null,
+        "vanity_tag": null
+      },
+      "titles": {
+        "include": [
+          "architect",
+          "analyst",
+          "solution architect",
+          "solutions architect",
+          "enterprise architect",
+          "integration architect",
+          "system architect",
+          "systems architect",
+          "engineer",
+          "system engineer",
+          "systems engineer",
+          "system analyst",
+          "systems analyst",
+          "team lead"
+        ],
+        "exclude": [
+          "intern"
+        ]
+      },
+      "locations": {
+        "include": [
+          "New York",
+          "NY",
+          "NYC"
+        ]
+      },
+      "work_location_type": {
+        "include_remote": true,
+        "include_hybrid": true,
+        "include_onsite": true
+      }
+    },
+    {
+      "id": "jsc_004",
+      "pipeline": "greenhouse_discovery",
+      "created_on": "2026-09-14T00:00:00Z",
+      "modified_on": "2026-09-14T00:00:00Z",
+      "description": "Greenhouse board token discovery search criteria and chip matrix.",
+      "search_chips": {
+        "search_term": [
+          "Architect",
+          "Team Lead"
+        ],
+        "location": [],
+        "date_posted": [],
+        "work_type": [
+          "remote"
+        ],
+        "employment_type": [
+          "Full time"
+        ]
+      },
+      "pagination": {
+        "max_pages_per_query": 150,
+        "request_delay_ms": 1000,
+        "timeout_seconds": 30,
+        "max_retries": 3
+      },
+      "probe_verification": true
+    }
+  ]
+}

@@ -1,0 +1,216 @@
+{
+  "id": "jh_001",
+  "1": {
+    "title": "Principal Platform Architect",
+    "company": "Helios Ledger Group",
+    "location": "Boston, Massachusetts",
+    "start_date": "5/2024",
+    "end_date": "Present",
+    "focus_narrative": "Owns reference architecture and platform standards for a fictional payments-ledger product suite. Sets integration contracts, cloud landing-zone patterns, and architecture review cadence for delivery teams.",
+    "mapped_skills": [
+      "Enterprise Architecture",
+      "Architecture Governance",
+      "Cloud Strategy"
+    ],
+    "accomplishments": [
+      "Stood up a weekly architecture review for 8 product squads and retired 14 overlapping service contracts into 3 shared platform APIs.",
+      "Published a cloud landing-zone catalog on Amazon Web Services (AWS) that cut new environment setup from 9 days to 2 days.",
+      "Defined event-envelope standards used by 6 downstream consumers, dropping schema-mismatch incidents from 22 per quarter to 4."
+    ]
+  },
+  "2": {
+    "title": "Staff Integration Architect",
+    "company": "Helios Ledger Group",
+    "location": "Boston, Massachusetts",
+    "start_date": "8/2022",
+    "end_date": "5/2024",
+    "focus_narrative": "Technical lead for customer-ledger integrations. Mapped system dependencies, wrote interface specs, and coached squads through delivery of batch and near-real-time data paths.",
+    "mapped_skills": [
+      "Solution Architecture",
+      "Systems Integration",
+      "Extract, Transform, Load (ETL)"
+    ],
+    "accomplishments": [
+      "Designed a retry-safe ledger ingest path that processed 2.4 million nightly postings with a 99.7% first-pass success rate.",
+      "Replaced 5 point-to-point file drops with a single ETL hub, shrinking partner onboarding from 6 weeks to 11 days.",
+      "Led a guild of 7 engineers through discovery, story slicing, and interface certification for 3 external banks."
+    ]
+  },
+  "3": {
+    "title": "Senior Platform Engineer",
+    "company": "Helios Ledger Group",
+    "location": "Boston, Massachusetts",
+    "start_date": "3/2021",
+    "end_date": "8/2022",
+    "focus_narrative": "Built internal developer-platform services that provisioned identities, queues, and data stores for product teams. Focused on reliability, runbooks, and reducing manual environment work.",
+    "mapped_skills": [
+      "System Architecture",
+      "Amazon Web Services (AWS)",
+      "Process Automation"
+    ],
+    "accomplishments": [
+      "Automated workspace provisioning with AWS Lambda and Amazon S3 artifacts, removing 420 hours of ticket work per year.",
+      "Cut platform change-failure rate from 18% to 6% by adding contract tests on REST APIs before release.",
+      "Wrote operator runbooks that reduced after-hours pages from 11 per month to 3."
+    ]
+  },
+  "4": {
+    "title": "Data Integration Analyst",
+    "company": "Helios Ledger Group",
+    "location": "Boston, Massachusetts",
+    "start_date": "11/2019",
+    "end_date": "3/2021",
+    "focus_narrative": "Supported the customer master and reporting warehouse. Built extraction jobs, cleaned feed contracts, and coordinated vendor changes with finance operations.",
+    "mapped_skills": [
+      "Data Integration",
+      "SQL",
+      "Continuous Process Improvement"
+    ],
+    "accomplishments": [
+      "Collapsed 9 ad-hoc spreadsheet loads into scheduled SQL jobs, cutting close-week manual effort by 16 hours.",
+      "Introduced feed-level checksums that flagged 1,200 malformed rows per month before they reached finance dashboards.",
+      "Documented source-to-target maps for 22 warehouse tables used by Looker reports."
+    ]
+  },
+  "5": {
+    "title": "ERP Cutover Analyst",
+    "company": "Copperline Markets",
+    "location": "Chicago, Illinois",
+    "start_date": "7/2018",
+    "end_date": "10/2019",
+    "focus_narrative": "Migration analyst for a fictional wholesale distributor moving three regional ERPs onto one SAP S/4HANA tenant. Owned data-mapping workbooks and cutover rehearsal scripts.",
+    "mapped_skills": [
+      "SAP S/4HANA",
+      "Enterprise Resource Planning (ERP)",
+      "Data Migration"
+    ],
+    "accomplishments": [
+      "Mapped 38 material-master fields across 3 legacy catalogs and cleared 91% of duplicates before dress rehearsal.",
+      "Ran 4 full-volume mock cutovers that reduced go-live warehouse downtime from a planned 36 hours to 14 hours.",
+      "Produced sequence diagrams used by 2 regional engineering pods during hypercare."
+    ]
+  },
+  "6": {
+    "title": "Application Engineer",
+    "company": "Copperline Markets",
+    "location": "Chicago, Illinois",
+    "start_date": "2/2017",
+    "end_date": "7/2018",
+    "focus_narrative": "Built small extraction and reporting tools that filled gaps in the warehouse ERP. Partnered with operations on UAT for handheld and dock-door software.",
+    "mapped_skills": [
+      "Software Architecture",
+      "SQL",
+      "Software Development Life Cycle (SDLC)"
+    ],
+    "accomplishments": [
+      "Shipped Python and SQL extractors that combined inventory, freight, and appointment data for daily slot planning.",
+      "Coordinated UAT for a yard-management client across 12 docks and held defect leakage to 2 severity-1 issues at launch.",
+      "Maintained a 19-page operations handbook for shift leads after each release."
+    ]
+  },
+  "7": {
+    "title": "Store Technology Analyst",
+    "company": "Fable & Finch Retail",
+    "location": "Denver, Colorado",
+    "start_date": "9/2014",
+    "end_date": "1/2017",
+    "focus_narrative": "Tier-3 analyst for a fictional specialty retailer. Owned in-store client images, payment-terminal configs, and after-hours incident triage.",
+    "mapped_skills": [
+      "Enterprise Resource Planning (ERP)",
+      "IT Operations Management",
+      "Software Development Life Cycle (SDLC)"
+    ],
+    "accomplishments": [
+      "Packaged quarterly register images for 180 specialty shops and completed 17 of 18 waves with no missed open-store windows.",
+      "Triaged L3 incidents for 180 shops, holding median restore time at 42 minutes for payment-terminal outages.",
+      "Replaced tribal troubleshooting notes with a 40-article internal knowledge set used by field techs."
+    ]
+  },
+  "8": {
+    "title": "Client Implementation Developer",
+    "company": "Westbridge POS Labs",
+    "location": "Denver, Colorado",
+    "start_date": "6/2013",
+    "end_date": "9/2014",
+    "focus_narrative": "Configured and shipped point-of-sale builds for fictional boutique chains. Owned requirements workshops, lab certification, and remote rollout packages.",
+    "mapped_skills": [
+      "Process Automation",
+      "Software Development Life Cycle (SDLC)",
+      "Requirements Analysis"
+    ],
+    "accomplishments": [
+      "Delivered 11 client builds from workshop through lab sign-off, averaging 9 weeks from kickoff to first store.",
+      "Built a parameterized installer that cut in-store tech time from 95 minutes to 40 minutes per register.",
+      "Closed 63 configuration defects in pre-prod before the first production wave."
+    ]
+  },
+  "9": {
+    "title": "Implementation Consultant",
+    "company": "Westbridge POS Labs",
+    "location": "Denver, Colorado",
+    "start_date": "1/2012",
+    "end_date": "6/2013",
+    "focus_narrative": "Gathered scope, reviewed estimates, and ran functional tests for retail clients adopting the Westbridge register stack.",
+    "mapped_skills": [
+      "Project Management",
+      "Requirements Analysis",
+      "Enterprise Resource Planning (ERP)"
+    ],
+    "accomplishments": [
+      "Facilitated 15 discovery workshops and published scope matrices that kept 4 of 5 projects inside the signed SOW hours.",
+      "Executed scripted functional tests covering 86 register flows before each client go-live."
+    ]
+  },
+  "10": {
+    "title": "Service Desk Coordinator",
+    "company": "Pixel Dock Services",
+    "location": "Albany, New York",
+    "start_date": "4/2010",
+    "end_date": "12/2011",
+    "focus_narrative": "Coordinated a small help desk for a fictional managed-service shop. Balanced inbound tickets, vendor escalations, and weekly ops reporting.",
+    "mapped_skills": [
+      "Technical Leadership",
+      "IT Operations Management",
+      "Process Automation"
+    ],
+    "accomplishments": [
+      "Supervised 4 desk analysts and routed vendor escalations with a same-week closure rate of 71%.",
+      "Handled a personal queue of about 35 tickets per day with a 76% same-day resolve rate.",
+      "Replaced a weekly spreadsheet rollup with a VBA export that saved 3 hours of reporting each Friday."
+    ]
+  },
+  "11": {
+    "title": "Network Support Contractor",
+    "company": "Independent Contracting",
+    "location": "Albany, New York",
+    "start_date": "8/2009",
+    "end_date": "3/2010",
+    "focus_narrative": "Short-term contractor helping two fictional small offices stabilize local networks, backups, and remote access.",
+    "mapped_skills": [
+      "IT Operations Management",
+      "Requirements Analysis",
+      "Project Management"
+    ],
+    "accomplishments": [
+      "Replaced an unmanaged 12-device wireless mesh with a single controller layout that stopped daily dropouts for 18 staff.",
+      "Configured site-to-site VPN access so 6 remote users could reach file shares without exposing RDP to the internet."
+    ]
+  },
+  "12": {
+    "title": "Lab Systems Coordinator",
+    "company": "Lakeshore Civic Lab",
+    "location": "Albany, New York",
+    "start_date": "6/2008",
+    "end_date": "8/2009",
+    "focus_narrative": "Seasonal coordinator for a fictional community computer lab. Tracked hardware inventory, image refresh, and volunteer training calendars.",
+    "mapped_skills": [
+      "IT Operations Management",
+      "Technical Leadership",
+      "Data Migration"
+    ],
+    "accomplishments": [
+      "Imaged 24 public lab PCs onto a common baseline and logged hardware assets into a shared inventory workbook.",
+      "Trained 9 volunteers on backup and restore steps before a lab relocation weekend."
+    ]
+  }
+}

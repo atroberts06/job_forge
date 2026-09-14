@@ -1,0 +1,320 @@
+name: Job Search Pull
+
+on:
+  schedule:
+    # 11:00 UTC daily
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Pull date YYYY-MM-DD (default: today UTC)"
+        required: false
+        type: string
+        default: ""
+      rebuild:
+        description: "Overwrite today's jobs.json (every row status=new) and wipe matching analysis sidecar files plus approved-jobs.json rows for those ids. Greenhouse/TalentBrew then mark missing prior-day ids closed on the nearest prior file (not SerpAPI)."
+        required: false
+        type: boolean
+        default: false
+      platform:
+        description: "Ingest pipeline to run"
+        required: false
+        type: choice
+        options:
+          - all
+          - greenhouse
+          - serpapi
+        default: all
+
+concurrency:
+  group: job-search-pull
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  PYTHONPATH: .github/scripts/job-search
+
+jobs:
+  setup:
+    name: setup
+    runs-on: ubuntu-latest
+    outputs:
+      date: ${{ steps.meta.outputs.date }}
+      rebuild: ${{ steps.meta.outputs.rebuild }}
+      mode: ${{ steps.meta.outputs.mode }}
+      jobs_path: ${{ steps.meta.outputs.jobs_path }}
+      platform: ${{ steps.meta.outputs.platform }}
+    steps:
+      - name: Guard main-only dispatch
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::workflow_dispatch is only allowed on main (ref=${{ github.ref }})"
+          exit 1
+
+      - name: Resolve pull date (UTC)
+        id: meta
+        env:
+          INPUT_DATE: ${{ github.event.inputs.date || '' }}
+          INPUT_REBUILD: ${{ github.event.inputs.rebuild || 'false' }}
+          INPUT_PLATFORM: ${{ github.event.inputs.platform || 'all' }}
+        run: |
+          set -euo pipefail
+          TODAY=$(date -u +%F)
+          if [ -n "${INPUT_DATE}" ]; then
+            PULL_DATE="${INPUT_DATE}"
+          else
+            PULL_DATE="${TODAY}"
+          fi
+          if [[ ! "${PULL_DATE}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            echo "::error::Invalid date format: ${PULL_DATE}"
+            exit 1
+          fi
+          if [[ "${PULL_DATE}" < "${TODAY}" ]]; then
+            echo "::error::Past date rejected (${PULL_DATE} < ${TODAY} UTC)"
+            exit 1
+          fi
+          REBUILD=false
+          if [ "${INPUT_REBUILD}" = "true" ]; then
+            REBUILD=true
+            if [ "${PULL_DATE}" != "${TODAY}" ]; then
+              echo "::error::--rebuild only allowed for today UTC (${TODAY})"
+              exit 1
+            fi
+          fi
+          MODE=merge
+          if [ "${REBUILD}" = "true" ]; then
+            MODE=rebuild
+          fi
+          PLATFORM="${INPUT_PLATFORM}"
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            PLATFORM=all
+          fi
+          echo "date=${PULL_DATE}" >> "$GITHUB_OUTPUT"
+          echo "rebuild=${REBUILD}" >> "$GITHUB_OUTPUT"
+          echo "mode=${MODE}" >> "$GITHUB_OUTPUT"
+          echo "platform=${PLATFORM}" >> "$GITHUB_OUTPUT"
+          echo "jobs_path=.ai/history/job-search/greenhouse/src/${PULL_DATE}/jobs.json" >> "$GITHUB_OUTPUT"
+
+  greenhouse-pull:
+    name: greenhouse-pull
+    needs: setup
+    if: needs.setup.outputs.platform == 'all' || needs.setup.outputs.platform == 'greenhouse'
+    runs-on: ubuntu-latest
+    outputs:
+      new: ${{ steps.fetch.outputs.new }}
+      total: ${{ steps.fetch.outputs.total }}
+      closed: ${{ steps.fetch.outputs.closed }}
+      prior: ${{ steps.fetch.outputs.prior }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install dependencies
+        run: pip install -r .github/scripts/job-search/common/requirements.txt
+
+      - name: Fetch Greenhouse jobs
+        id: fetch
+        run: |
+          set -euo pipefail
+          ARGS=(--date "${{ needs.setup.outputs.date }}")
+          STUB_ARGS=(--date "${{ needs.setup.outputs.date }}" --platform greenhouse)
+          if [ "${{ needs.setup.outputs.rebuild }}" = "true" ]; then
+            ARGS+=(--rebuild)
+            STUB_ARGS+=(--rebuild)
+          fi
+          set +e
+          OUTPUT=$(python .github/scripts/job-search/greenhouse/fetch_greenhouse_jobs.py "${ARGS[@]}" 2>&1)
+          RC=$?
+          set -e
+          echo "${OUTPUT}"
+          if [ "${RC}" -ne 0 ]; then
+            exit "${RC}"
+          fi
+          python .github/scripts/job-search/common/write_analysis_stubs.py "${STUB_ARGS[@]}"
+          SUMMARY=$(echo "${OUTPUT}" | grep '^SUMMARY ' | tail -n1 || true)
+          NEW=$(echo "${SUMMARY}" | sed -n 's/.* new=\([0-9]*\).*/\1/p')
+          TOTAL=$(echo "${SUMMARY}" | sed -n 's/.* total=\([0-9]*\).*/\1/p')
+          CLOSED=$(echo "${SUMMARY}" | sed -n 's/.* closed=\([0-9]*\).*/\1/p')
+          PRIOR=$(echo "${SUMMARY}" | sed -n 's/.* prior=\([^ ]*\).*/\1/p')
+          NEW=${NEW:-0}
+          TOTAL=${TOTAL:-0}
+          CLOSED=${CLOSED:-0}
+          PRIOR=${PRIOR:--}
+          echo "new=${NEW}" >> "$GITHUB_OUTPUT"
+          echo "total=${TOTAL}" >> "$GITHUB_OUTPUT"
+          echo "closed=${CLOSED}" >> "$GITHUB_OUTPUT"
+          echo "prior=${PRIOR}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate greenhouse output
+        env:
+          JOBS_PATH: ${{ needs.setup.outputs.jobs_path }}
+          PRIOR: ${{ steps.fetch.outputs.prior }}
+        run: |
+          python .github/scripts/job-search/common/validate_jobs.py "${JOBS_PATH}"
+          if [ -n "${PRIOR}" ] && [ "${PRIOR}" != "-" ]; then
+            python .github/scripts/job-search/common/validate_jobs.py "${PRIOR}"
+          fi
+          if [ -f .ai/history/job-search/greenhouse/approved-jobs.json ]; then
+            python .github/scripts/job-search/common/validate_job_search.py \
+              ".ai/history/job-search/greenhouse/approved-jobs.json"
+          fi
+
+      - name: Upload greenhouse artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: greenhouse-pull
+          path: .ai/history/job-search/greenhouse
+          if-no-files-found: error
+
+  serpapi-pull:
+    name: serpapi-pull
+    needs: setup
+    if: needs.setup.outputs.platform == 'all' || needs.setup.outputs.platform == 'serpapi'
+    runs-on: ubuntu-latest
+    environment: production
+    outputs:
+      skipped: ${{ steps.fetch.outputs.skipped }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install dependencies
+        run: pip install -r .github/scripts/job-search/common/requirements.txt
+
+      - name: Fetch SerpApi jobs
+        id: fetch
+        env:
+          SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
+        run: |
+          set -euo pipefail
+          ARGS=(--date "${{ needs.setup.outputs.date }}")
+          STUB_ARGS=(--date "${{ needs.setup.outputs.date }}" --platform serpapi)
+          if [ "${{ needs.setup.outputs.rebuild }}" = "true" ]; then
+            ARGS+=(--rebuild)
+            STUB_ARGS+=(--rebuild)
+          fi
+          set +e
+          OUTPUT=$(python .github/scripts/job-search/serp-api/fetch_serpapi_jobs.py "${ARGS[@]}" 2>&1)
+          RC=$?
+          set -e
+          echo "${OUTPUT}"
+          if [ "${RC}" -ne 0 ]; then
+            exit "${RC}"
+          fi
+          JOBS_PATH=".ai/history/job-search/serpapi/src/${{ needs.setup.outputs.date }}/jobs.json"
+          SKIPPED=true
+          if [ -f "${JOBS_PATH}" ]; then
+            SKIPPED=false
+            python .github/scripts/job-search/common/write_analysis_stubs.py "${STUB_ARGS[@]}"
+            python .github/scripts/job-search/common/validate_jobs.py "${JOBS_PATH}"
+            if [ -f .ai/history/job-search/serpapi/approved-jobs.json ]; then
+              python .github/scripts/job-search/common/validate_job_search.py \
+                ".ai/history/job-search/serpapi/approved-jobs.json"
+            fi
+          fi
+          echo "skipped=${SKIPPED}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload serpapi artifact
+        if: steps.fetch.outputs.skipped == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: serpapi-pull
+          path: .ai/history/job-search/serpapi
+          if-no-files-found: ignore
+
+      - name: Upload companies catalog artifact
+        if: steps.fetch.outputs.skipped == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: companies-catalog
+          path: .ai/history/job-search/companies.json
+          if-no-files-found: error
+
+  commit-and-push:
+    name: commit-and-push
+    needs: [setup, greenhouse-pull, serpapi-pull]
+    if: |
+      always() &&
+      needs.setup.result == 'success' &&
+      (
+        needs.greenhouse-pull.result == 'success' ||
+        (needs.greenhouse-pull.result == 'skipped' && needs.serpapi-pull.result == 'success')
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Download greenhouse artifact
+        if: needs.greenhouse-pull.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: greenhouse-pull
+          path: .ai/history/job-search/greenhouse
+
+      - name: Download serpapi artifact
+        if: needs.serpapi-pull.result == 'success' && needs.serpapi-pull.outputs.skipped == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          name: serpapi-pull
+          path: .ai/history/job-search/serpapi
+
+      - name: Download companies catalog artifact
+        if: needs.serpapi-pull.result == 'success' && needs.serpapi-pull.outputs.skipped == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          name: companies-catalog
+          path: .ai/history/job-search
+
+      - name: Commit and push
+        env:
+          DATE: ${{ needs.setup.outputs.date }}
+          MODE: ${{ needs.setup.outputs.mode }}
+          NEW: ${{ needs.greenhouse-pull.outputs.new || '0' }}
+          TOTAL: ${{ needs.greenhouse-pull.outputs.total || '0' }}
+          CLOSED: ${{ needs.greenhouse-pull.outputs.closed || '0' }}
+          PRIOR: ${{ needs.greenhouse-pull.outputs.prior || '-' }}
+          GH_RESULT: ${{ needs.greenhouse-pull.result }}
+          SERP_RESULT: ${{ needs.serpapi-pull.result }}
+          SERP_SKIPPED: ${{ needs.serpapi-pull.outputs.skipped || 'true' }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .ai/history/job-search/greenhouse/ || true
+          git add .ai/history/job-search/serpapi/ || true
+          git add .ai/history/job-search/companies.json || true
+          MSG="chore(job-search): ${DATE} ${MODE}"
+          if [ "${GH_RESULT}" = "success" ]; then
+            MSG="${MSG} greenhouse +${NEW} new (total ${TOTAL}, closed ${CLOSED})"
+          fi
+          if [ "${SERP_RESULT}" = "success" ] && [ "${SERP_SKIPPED}" = "false" ]; then
+            MSG="${MSG}; serpapi"
+          elif [ "${SERP_RESULT}" != "success" ] && [ "${GH_RESULT}" = "success" ]; then
+            MSG="${MSG}; serpapi skipped-or-failed"
+          fi
+          if git diff --cached --quiet; then
+            echo "No file content change; creating empty commit for pull signal."
+            git commit --allow-empty -m "${MSG}"
+          else
+            git commit -m "${MSG}"
+          fi
+          git push origin HEAD:main

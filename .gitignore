@@ -1,0 +1,11 @@
+dist/
+.venv/
+__pycache__/
+*.py[cod]
+~$*
+.ai/history/job-search/queue/*-analysis-request.json
+.ai/history/resume-tailor/queue/*-tailor-request.json
+.ai/history/orchestrator/run.log
+.cursor/plans/*
+!.cursor/plans/.gitkeep
+.auth/

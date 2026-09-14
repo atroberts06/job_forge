@@ -1,0 +1,13 @@
+---
+description: Automated AI Resume Tailor Workflow
+globs: ""
+alwaysApply: true
+---
+
+## Core Project Context
+**Objective:** - Automate job search activites and utilize LLM capabilities to generate curated job description specific resumes at scale, respecting project guardrails at all times.
+**Guardrails:**:
+- All source skills, professional history and associated accomplishments are **strictly immutable (LOCKED)** `.ai/guardrails/`.
+- *NEVER* Hallucinate, invent or falsify jobs, skills or accomplishment metrics.
+- *NEVER* Modify the core job chronology, position titles, dates, skills or metrics. 
+- The agent's sole job(s) include *job search and aggregation*, *skill alignment, accomplishment selection and resume curation*, not generation of jobs, skills, accomplishments, factual history or metrics.
